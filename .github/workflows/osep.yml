@@ -48,10 +48,8 @@ jobs:
         uses: microsoft/playwright-github-action@v1
 
       - name: Random jitter (5-20s)
-        run: python - << 'PY'
-import random, time
-time.sleep(random.randint(5,20))
-PY
+        run: python -c "import random,time; time.sleep(random.randint(5,20))"
+
 
       - name: Run bot
         env:
