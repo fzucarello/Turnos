@@ -1,0 +1,60 @@
+name: Turnos OSEP (cada 30 min)
+
+on:
+  workflow_dispatch:  # te permite lanzarlo a mano para probar
+  schedule:
+    # GitHub usa UTC. Mendoza = UTC-3.
+    # 05:00–01:00 local => 08:00–04:00 UTC.
+    - cron: '*/30 8-23 * * *'  # 05:00–20:30 AR
+    - cron: '*/30 0-3 * * *'   # 21:00–00:30 AR
+    - cron: '0 4 * * *'        # 01:00 AR
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: osep-bot
+      cancel-in-progress: true
+    env:
+      TZ: America/Argentina/Mendoza
+      PORTAL_URL: https://www.osep.mendoza.gov.ar/webapp_pri
+      HEADLESS: "true"
+      DRY_RUN: "false"
+      TIMEOUT_MS: "25000"
+      OBJ_SERVICIO: "ODONTOLOGIA INTEGRAL ADULTOS"
+      OBJ_ZONA: "GRAN MENDOZA"
+      OBJ_DEPTO: "CAPITAL"
+      OBJ_HORA_PRIORIDAD: "EARLIEST"
+      OBJ_HORA_FLEXIBLE: "true"
+      OBJ_DIA_FLEXIBLE: "true"
+      OBJ_FECHA_FLEXIBLE: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps (pip)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright Browsers
+        uses: microsoft/playwright-github-action@v1
+
+      - name: Random jitter (5-20s)
+        run: python - << 'PY'
+import random, time
+time.sleep(random.randint(5,20))
+PY
+
+      - name: Run bot
+        env:
+          OSEP_USER: ${{ secrets.OSEP_USER }}
+          OSEP_PASS: ${{ secrets.OSEP_PASS }}
+        run: python -u app.py
