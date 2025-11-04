@@ -44,8 +44,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+      - name: Install Playwright Browsers (Python CLI)
+        run: |
+          python -m playwright install --with-deps chromium
+
 
       - name: Random jitter (5-20s)
         run: python -c "import random,time; time.sleep(random.randint(5,20))"
