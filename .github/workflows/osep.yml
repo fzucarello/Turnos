@@ -30,7 +30,8 @@ jobs:
       OBJ_HORA_PRIORIDAD: "EARLIEST"
       OBJ_HORA_FLEXIBLE: "true"
       OBJ_DIA_FLEXIBLE: "true"
-      OBJ_FECHA_FLEXIBLE: "true"
+      OBJ_FECHA_FLEXIBLE: "false"
+      OBJ_FECHA_DISP: "07-09-2026"
 
     steps:
       - name: Checkout
