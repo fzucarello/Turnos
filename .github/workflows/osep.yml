@@ -3,11 +3,17 @@ name: Turnos OSEP (cada 30 min)
 on:
   workflow_dispatch:  # te permite lanzarlo a mano para probar
   schedule:
-    # GitHub usa UTC. Mendoza = UTC-3.
-    # 05:00–01:00 local => 08:00–04:00 UTC.
-    - cron: '*/10 8-23 * * *'  # 05:00–20:30 AR
-    - cron: '*/10 0-3 * * *'   # 21:00–00:30 AR
-    - cron: '0 4 * * *'        # 01:00 AR
+    # 05:03 a 23:53, hora Mendoza
+    - cron: '3-53/10 5-23 * * *'
+      timezone: 'America/Argentina/Mendoza'
+  
+    # 00:03 a 00:53
+    - cron: '3-53/10 0 * * *'
+      timezone: 'America/Argentina/Mendoza'
+  
+    # Última ejecución 01:03
+    - cron: '3 1 * * *'
+      timezone: 'America/Argentina/Mendoza'
 
 jobs:
   run:
@@ -15,7 +21,7 @@ jobs:
     timeout-minutes: 10
     concurrency:
       group: osep-bot
-      cancel-in-progress: true
+      cancel-in-progress: false
     env:
       TZ: America/Argentina/Mendoza
       PORTAL_URL: https://www.osep.mendoza.gov.ar/webapp_pri
@@ -31,14 +37,14 @@ jobs:
       OBJ_HORA_FLEXIBLE: "true"
       OBJ_DIA_FLEXIBLE: "true"
       OBJ_FECHA_FLEXIBLE: "false"
-      OBJ_FECHA_DISP: "07-09-2026"
+    # OBJ_FECHA_DISP: "07-09-2026"         #quitar el hashtag si se desea determinar una fecha en la que se quiera obtener turno
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
