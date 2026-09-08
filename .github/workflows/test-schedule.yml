@@ -1,0 +1,18 @@
+name: Test Scheduler GitHub
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: '7-57/10 * * * *'
+      timezone: 'America/Argentina/Mendoza'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mostrar ejecución
+        run: |
+          echo "GitHub schedule funcionando"
+          date
