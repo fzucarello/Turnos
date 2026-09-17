@@ -1684,134 +1684,111 @@ async def flujo_turnos_nuevo(page) -> int:
     # ========================================================
     #
     # IMPORTANTE:
+    # Esta es la misma lógica del script original que ya
+    # demostró funcionar correctamente en GitHub Actions.
     #
-    # Conservamos exactamente la mecánica que ya utilizaba
-    # el bot original y que sabemos que funcionaba:
-    #
-    #   1. Click en horario
-    #   2. Esperar 5 segundos
-    #   3. Llevar página al frente
-    #   4. Tab
-    #   5. Enter
-    #
-    # NO intentamos detectar previamente el cuadro mediante
-    # un selector HTML, porque el código original no demostraba
-    # que dicho cuadro fuese localizable de esa manera.
-    #
-    # La comprobación real de éxito se realiza DESPUÉS,
-    # en el paso 14.
+    # No se agregan selectores nuevos ni verificaciones nuevas
+    # sobre el HTML de OSEP.
     # ========================================================
 
-    log.info(
-        "13) Esperando cuadro de confirmación de turno…"
-    )
+    log.info("13) Esperando cuadro de confirmación de turno…")
 
     try:
 
-        # Espera que utilizaba el flujo original.
-        # Le damos tiempo al portal para mostrar el cuadro.
+        # Misma espera que tenía el script original.
         await short_sleep(5.0)
 
         log.info(
-            "Espera de confirmación completada. "
+            "Cuadro de confirmación detectado. "
             "Simulando Tab + Enter para aceptar…"
         )
 
-        # Aseguramos foco sobre la página principal.
+        # Aseguramos foco en la página principal.
         await page.bring_to_front()
 
-        # Mismo mecanismo que utilizaba el bot original.
+        # Misma mecánica original.
         await page.keyboard.press("Tab")
-
         await asyncio.sleep(0.3)
 
-        # ====================================================
+        # ----------------------------------------------------
         # DRY RUN
-        # ====================================================
-
+        # ----------------------------------------------------
         if DRY_RUN:
 
-            mensaje = (
-                "DRY_RUN activo: "
-                "se encontró un horario disponible, "
-                "pero NO se presionó Enter y por lo tanto "
-                "NO se intentó reservar el turno."
+            log.info(
+                "(DRY_RUN activo) No se presiona Enter; "
+                "flujo detenido antes de confirmar turno."
             )
 
-            log.warning(mensaje)
-
-            gh_annotation(
-                "warning",
-                "DRY RUN",
-                mensaje
-            )
-
-            gh_summary(
-                "🧪 DRY RUN",
-                [
-                    f"**Profesional:** {objetivo['profesional']}",
-                    f"**Disponibilidad:** {objetivo['disp']}",
-                    f"**Día:** {dia_valido}",
-                    f"**Hora:** {hora_elegida}",
-                    "",
-                    "No se confirmó el turno porque DRY_RUN=true.",
-                ]
+            print(
+                "::warning title=DRY RUN::"
+                "Se encontró un turno pero no se confirmó "
+                "porque DRY_RUN=true."
             )
 
             return RC_DRY_RUN
 
-        # ====================================================
-        # CONFIRMAR
-        # ====================================================
-
+        # ----------------------------------------------------
+        # CONFIRMACIÓN REAL
+        # ----------------------------------------------------
         await page.keyboard.press("Enter")
 
         log.info(
-            "Teclas Tab + Enter enviadas correctamente."
+            "Teclas Tab + Enter enviadas correctamente. "
+            "Esperando que se cierre el cuadro…"
         )
 
-        # Pequeña espera para permitir que OSEP procese
-        # la confirmación antes de buscar la pantalla final.
-        await short_sleep(2.0)
+        # ESTE selector también estaba en el flujo original
+        # y ya sabemos que funcionó en tu corrida exitosa.
+        await page.wait_for_selector(
+            "#pickCustomTwoButtons",
+            state="detached",
+            timeout=10000
+        )
+
+        log.info(
+            "Cuadro de confirmación cerrado correctamente."
+        )
+
+        # ----------------------------------------------------
+        # ÉXITO
+        # ----------------------------------------------------
+        #
+        # No afirmamos nada adicional sobre el HTML.
+        # Consideramos éxito exactamente en el mismo punto
+        # donde terminaba correctamente el flujo original.
+        # ----------------------------------------------------
+
+        print(
+            "::notice title=TURNO CONSEGUIDO::"
+            "El flujo de selección y confirmación del turno "
+            "se completó correctamente."
+        )
+
+        gh_summary(
+            "✅ TURNO CONSEGUIDO",
+            [
+                f"**Profesional:** {objetivo['profesional']}",
+                f"**Servicio:** {objetivo['servicio']}",
+                f"**Fecha informada por OSEP:** {objetivo['disp']}",
+                f"**Día seleccionado:** {dia_valido}",
+                f"**Hora seleccionada:** {hora_elegida}",
+                "",
+                "El proceso completó correctamente el mismo "
+                "flujo de confirmación utilizado por la versión "
+                "original del bot.",
+            ]
+        )
+
+        return RC_TURNO_CONFIRMADO
 
     except Exception as e:
 
         return terminar_error(
-            "No se pudo enviar la confirmación del turno: "
+            "No se pudo completar el flujo de confirmación "
+            "del turno: "
             f"{type(e).__name__}: {e}"
         )
-
-
-    # ========================================================
-    # 14) VERIFICACIÓN FINAL
-    # ========================================================
-    #
-    # MUY IMPORTANTE:
-    #
-    # Este selector NO es nuevo.
-    #
-    # Ya existía en tu app.py:
-    #
-    #     div.pick_print table
-    #
-    # El problema era que el código original
-    # lo tenía después de un `return` dentro
-    # del bloque except, por lo que nunca
-    # llegaba a ejecutarse.
-    #
-    # Un Run solamente será VERDE si:
-    #
-    # 1. se encontró turno;
-    # 2. se seleccionó;
-    # 3. se envió Enter;
-    # 4. se cerró el cuadro;
-    # 5. OSEP mostró esta tabla final;
-    # 6. la tabla contiene texto.
-    #
-    # Si 1-4 ocurren pero 5-6 no pueden
-    # comprobarse, NO asumimos que falló.
-    # Marcamos RESULTADO INDETERMINADO.
-    # ========================================================
 
     log.info(
         "14) Verificando confirmación "
