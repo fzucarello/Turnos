@@ -1680,43 +1680,50 @@ async def flujo_turnos_nuevo(page) -> int:
 
 
     # ========================================================
-    # 13) CUADRO DE CONFIRMACIÓN
+    # 13) CONFIRMACIÓN DEL TURNO
+    # ========================================================
+    #
+    # IMPORTANTE:
+    #
+    # Conservamos exactamente la mecánica que ya utilizaba
+    # el bot original y que sabemos que funcionaba:
+    #
+    #   1. Click en horario
+    #   2. Esperar 5 segundos
+    #   3. Llevar página al frente
+    #   4. Tab
+    #   5. Enter
+    #
+    # NO intentamos detectar previamente el cuadro mediante
+    # un selector HTML, porque el código original no demostraba
+    # que dicho cuadro fuese localizable de esa manera.
+    #
+    # La comprobación real de éxito se realiza DESPUÉS,
+    # en el paso 14.
     # ========================================================
 
     log.info(
-        "13) Esperando cuadro "
-        "de confirmación de turno…"
+        "13) Esperando cuadro de confirmación de turno…"
     )
-
 
     try:
 
-        # Este ID ya estaba presente
-        # en el código original.
-        await page.wait_for_selector(
-            "#pickCustomTwoButtons",
-            state="visible",
-            timeout=10000
-        )
-
+        # Espera que utilizaba el flujo original.
+        # Le damos tiempo al portal para mostrar el cuadro.
+        await short_sleep(5.0)
 
         log.info(
-            "Cuadro de confirmación detectado. "
+            "Espera de confirmación completada. "
             "Simulando Tab + Enter para aceptar…"
         )
 
-
+        # Aseguramos foco sobre la página principal.
         await page.bring_to_front()
 
-
-        # Conservamos el mismo mecanismo
-        # que actualmente te funciona.
-        await page.keyboard.press(
-            "Tab"
-        )
+        # Mismo mecanismo que utilizaba el bot original.
+        await page.keyboard.press("Tab")
 
         await asyncio.sleep(0.3)
-
 
         # ====================================================
         # DRY RUN
@@ -1726,14 +1733,12 @@ async def flujo_turnos_nuevo(page) -> int:
 
             mensaje = (
                 "DRY_RUN activo: "
-                "se encontró un turno y "
-                "se abrió el cuadro de confirmación, "
-                "pero NO se presionó Enter."
+                "se encontró un horario disponible, "
+                "pero NO se presionó Enter y por lo tanto "
+                "NO se intentó reservar el turno."
             )
 
-            log.warning(
-                mensaje
-            )
+            log.warning(mensaje)
 
             gh_annotation(
                 "warning",
@@ -1744,62 +1749,35 @@ async def flujo_turnos_nuevo(page) -> int:
             gh_summary(
                 "🧪 DRY RUN",
                 [
-                    f"**Profesional:** "
-                    f"{objetivo['profesional']}",
-
-                    f"**Disponibilidad:** "
-                    f"{objetivo['disp']}",
-
-                    f"**Día:** "
-                    f"{dia_valido}",
-
-                    f"**Hora:** "
-                    f"{hora_elegida}",
-
+                    f"**Profesional:** {objetivo['profesional']}",
+                    f"**Disponibilidad:** {objetivo['disp']}",
+                    f"**Día:** {dia_valido}",
+                    f"**Hora:** {hora_elegida}",
                     "",
-                    "No se confirmó el turno "
-                    "porque DRY_RUN=true.",
+                    "No se confirmó el turno porque DRY_RUN=true.",
                 ]
             )
 
             return RC_DRY_RUN
 
-
         # ====================================================
         # CONFIRMAR
         # ====================================================
 
-        await page.keyboard.press(
-            "Enter"
-        )
-
+        await page.keyboard.press("Enter")
 
         log.info(
-            "Teclas Tab + Enter enviadas "
-            "correctamente. "
-            "Esperando que se cierre "
-            "el cuadro…"
+            "Teclas Tab + Enter enviadas correctamente."
         )
 
-
-        await page.wait_for_selector(
-            "#pickCustomTwoButtons",
-            state="detached",
-            timeout=10000
-        )
-
-
-        log.info(
-            "Cuadro de confirmación "
-            "cerrado correctamente."
-        )
-
+        # Pequeña espera para permitir que OSEP procese
+        # la confirmación antes de buscar la pantalla final.
+        await short_sleep(2.0)
 
     except Exception as e:
 
         return terminar_error(
-            "No se pudo completar el cuadro "
-            "de confirmación del turno: "
+            "No se pudo enviar la confirmación del turno: "
             f"{type(e).__name__}: {e}"
         )
 
