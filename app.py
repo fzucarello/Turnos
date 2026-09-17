@@ -16,28 +16,33 @@ from playwright.async_api import async_playwright
 # CÓDIGOS DE SALIDA
 # ============================================================
 #
-# GitHub Actions considera:
+# IMPORTANTE:
 #
-#   0       = ejecución exitosa
-#   != 0    = ejecución con error
+# Se aprovechan las notificaciones nativas de GitHub Actions.
 #
-# Para este bot vamos a usar:
+# GitHub está configurado para enviar correo cuando
+# un workflow termina con failure.
 #
-#   0  = TURNO CONSEGUIDO Y CONFIRMADO
-#   10 = búsqueda correcta pero SIN TURNO
-#   2  = configuración incompleta
-#   3  = error técnico / resultado indeterminado
-#   11 = DRY_RUN
+# Por eso:
 #
-# De esta manera, un Run verde significa específicamente
-# que OSEP mostró la confirmación final.
+#   0 = NO HAY TURNO
+#       Situación normal. GitHub queda verde y no manda correo.
+#
+#   1 = TURNO CONSEGUIDO
+#       Situación excepcional. GitHub queda rojo y manda correo.
+#
+#   3 = ERROR TÉCNICO
+#       También queda rojo y manda correo para poder revisarlo.
+#
+# El color rojo de "TURNO CONSEGUIDO" es intencional:
+# se utiliza únicamente para provocar la notificación por email.
 # ============================================================
 
-RC_TURNO_CONFIRMADO = 0
-RC_CONFIG = 2
+RC_SIN_TURNO = 0
+RC_TURNO_CONFIRMADO = 1
+RC_CONFIG = 3
 RC_ERROR_TECNICO = 3
-RC_SIN_TURNO = 10
-RC_DRY_RUN = 11
+RC_DRY_RUN = 0
 
 
 # ============================================================
