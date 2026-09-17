@@ -28,17 +28,17 @@ jobs:
       HEADLESS: "true"
       DRY_RUN: "false"
       TIMEOUT_MS: "25000"
-      OBJ_SERVICIO: "DERMATOLOGIA"   #"ODONTOLOGIA INTEGRAL ADULTOS"   #"MEDICINA DE FAMILIA"
+      OBJ_SERVICIO: "FLEBOLOGIA"  #"DERMATOLOGIA"   #"ODONTOLOGIA INTEGRAL ADULTOS"   #"MEDICINA DE FAMILIA"
       OBJ_ZONA: "GRAN MENDOZA"
       OBJ_DEPTO: "GODOY CRUZ"    #"CAPITAL"    #"GUAYMALLEN"  #"GODOY CRUZ"
-      OBJ_HORA_MIN: "8:00"
-      OBJ_HORA_MAX: "22:00"
+      OBJ_HORA_MIN: "false" #"8:00"
+      OBJ_HORA_MAX: "false" #"22:00"
       OBJ_HORA_PRIORIDAD: "EARLIEST"      #"EARLIEST"
       OBJ_HORA_FLEXIBLE: "true"
       OBJ_DIA_FLEXIBLE: "true"
       OBJ_FECHA_FLEXIBLE: "false"
     # OBJ_FECHA_DISP: "07-09-2026"         #quitar el hashtag si se desea determinar una fecha en la que se quiera obtener turno
-      OBJ_MEDICO: "CASSANI NATALIA LAURA"  #este parámetro indica qué profesional se desea buscar en el buscador al hacer la consulta de turnos. Admite que no exista, si se deja con # al comienzo, busca cualquier profesional
+      OBJ_MEDICO: "false" #"CASSANI NATALIA LAURA"  #este parámetro indica qué profesional se desea buscar en el buscador al hacer la consulta de turnos. Admite que no exista, si se deja con # al comienzo, busca cualquier profesional
 
     steps:
       - name: Checkout
