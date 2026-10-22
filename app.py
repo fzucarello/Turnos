@@ -984,6 +984,10 @@ async def flujo_turnos_nuevo(page) -> int:
         )
     )
 
+    # Filtros preferidos: sólo permiten ampliar sede/profesional, nunca especialidad.
+    dom_flexible = os.getenv("OBJ_DOMICILIO_FLEXIBLE", "false").lower() == "true"
+    prof_flexible = os.getenv("OBJ_PROFESIONAL_FLEXIBLE", "false").lower() == "true"
+
     dias_filtro = dias_configurados()
 
     fecha_filtro = (
@@ -996,12 +1000,15 @@ async def flujo_turnos_nuevo(page) -> int:
 
     def cumple_base(
         f,
-        aplicar_dias=True
+        aplicar_dias=True,
+        aplicar_dom=True,
+        aplicar_prof=True
     ):
 
         # Profesional
         if (
-            prof_filtro
+            aplicar_prof
+            and prof_filtro
             and prof_filtro != "FALSE"
             and prof_filtro
             not in normalizar(
@@ -1012,7 +1019,8 @@ async def flujo_turnos_nuevo(page) -> int:
 
         # Domicilio
         if (
-            dom_filtro
+            aplicar_dom
+            and dom_filtro
             and dom_filtro != "FALSE"
             and dom_filtro
             not in normalizar(
@@ -1054,46 +1062,54 @@ async def flujo_turnos_nuevo(page) -> int:
         return True
 
 
-    # Primero se respetan los días indicados.
-    candidatas_base = [
+    # Las preferencias se relajan sólo cuando no hay ninguna fecha
+    # utilizable bajo los filtros prioritarios. El orden mantiene
+    # profesional y sede obligatorios salvo autorización explícita.
+    def tiene_fecha_util(f):
+        fecha = parse_fecha_disp(f["disp"])
+        if not fecha or fecha.date() < datetime.now().date():
+            return False
+        if (
+            fecha_filtro and fecha_filtro.lower() != "false"
+            and not OBJ_FECHA_FLEXIBLE
+            and f["disp"].strip() != fecha_filtro
+        ):
+            return False
+        return True
 
-        f
+    combinaciones = [(True, True)]
+    if dom_flexible:
+        combinaciones.append((False, True))
+    if prof_flexible:
+        combinaciones.append((True, False))
+    if dom_flexible and prof_flexible:
+        combinaciones.append((False, False))
 
-        for f in filas
-
-        if cumple_base(
-            f,
-            aplicar_dias=True
-        )
-    ]
-
-
-    # Si no hay resultados y el día es flexible,
-    # podemos aceptar otro día.
-    if (
-        not candidatas_base
-        and dias_filtro
-        and OBJ_DIA_FLEXIBLE
-    ):
-
-        log.info(
-            "No hubo coincidencias con "
-            "OBJ_DIAS_VALIDOS; "
-            "OBJ_DIA_FLEXIBLE=true => "
-            "se permiten otros días."
-        )
-
-        candidatas_base = [
-
-            f
-
-            for f in filas
-
-            if cumple_base(
-                f,
-                aplicar_dias=False
-            )
-        ]
+    candidatas_base = []
+    for usar_dom, usar_prof in combinaciones:
+        alternativas_dias = [True]
+        if dias_filtro and OBJ_DIA_FLEXIBLE:
+            alternativas_dias.append(False)
+        for usar_dias in alternativas_dias:
+            intentadas = [
+                f for f in filas
+                if cumple_base(
+                    f, aplicar_dias=usar_dias,
+                    aplicar_dom=usar_dom,
+                    aplicar_prof=usar_prof
+                ) and tiene_fecha_util(f)
+            ]
+            if intentadas:
+                candidatas_base = intentadas
+                if not usar_dom:
+                    log.warning("Preferencia de centro sin disponibilidad; se permiten otros domicilios.")
+                if not usar_prof:
+                    log.warning("Preferencia de profesional sin disponibilidad; se permiten otros profesionales.")
+                if not usar_dias:
+                    log.info("Días preferidos sin disponibilidad; se permiten otros días.")
+                break
+        if candidatas_base:
+            break
 
 
     if not candidatas_base:
