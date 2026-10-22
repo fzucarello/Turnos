@@ -2,6 +2,20 @@
 
 URL protegida por Cloudflare Access: https://osep-admin.franchezuca.workers.dev/
 
+## Estado del despliegue (22/10/2026)
+
+Código, migración D1 y pruebas de CI: terminados. Merge realizado en main.
+**Pendiente de publicar:** la versión nueva de osep-admin y osep-scheduler. El panel visible de Cloudflare continúa siendo el de sólo lectura hasta realizar ese despliegue.
+
+La API de Cloudflare rechazó conectar GitHub automáticamente: *This project is disconnected from your Git account*. Se requiere completar la autorización OAuth GitHub → Cloudflare Workers Builds desde el navegador.
+
+Configuración de los dos Workers en Cloudflare → Workers & Pages → nombre del Worker → Settings → Builds → Connect:
+
+- osep-admin: repositorio fzucarello/Turnos, branch main, root directory infrastructure/admin; build command npm run build; deploy command npm run deploy.
+- osep-scheduler: mismo repo y branch, root directory infrastructure/scheduler; build command npm run check && npm test; deploy command npm run deploy. Desplegar el scheduler sólo cuando el panel esté listo y verificar luego los bindings existentes (GITHUB_TOKEN, OSEP_USER, OSEP_PASS y LEDGER). El Wrangler del scheduler tiene keep_vars=true.
+
+Para el panel establecer en Cloudflare sus bindings de texto (nunca secretos públicos): TEAM_DOMAIN = https://franchezuca-osep.cloudflareaccess.com; POLICY_AUD = 4b3a4ab0786b5a848a8d15e56fae523cbaecf513faf40b5cf20d474d47831bde; ADMIN_EMAIL = franchezuca@gmail.com. La app Access preexistente se mantiene activa. Después de habilitar Builds, publicar y probar antes de iniciar reservas manuales.
+
 ## Componentes
 
 - osep-admin: aplicación web responsive y API, con validación criptográfica del JWT Cloudflare Access, audiencia y correo autorizado.
