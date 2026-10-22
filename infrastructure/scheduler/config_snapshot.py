@@ -78,7 +78,7 @@ def validate_snapshot(raw, expected_hash, force_dry_run):
             datetime.date.fromisoformat(config["OBJ_FECHA_DESDE"])
         except ValueError:
             raise ValueError("config_invalid_OBJ_FECHA_DESDE") from None
-    from infrastructure.scheduler.availability_rules import weekly_rules
+    from availability_rules import weekly_rules
     if config["OBJ_EXCLUSIONES_SEMANA"]:
         if not config["OBJ_HORARIOS_SEMANA"]:
             raise ValueError("config_invalid_OBJ_EXCLUSIONES_SEMANA")
