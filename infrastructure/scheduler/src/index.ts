@@ -45,7 +45,12 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     INTERVAL_MINUTES: String(JSON.parse(stored.schedule_json).interval),
   } : env);
   // Prioridad: búsquedas manuales del usuario > búsquedas programadas > catálogo.
-  const allowCatalog = !isBusinessSlot(scheduledTime,catalogPlan);
+  const lastCatalog=workerMode==="production" ? await env.LEDGER.prepare(
+    "SELECT MAX(updated_at) AS last FROM manual_queue WHERE kind='catalog_master' AND state='accepted'"
+  ).first<{last:string|null}>() : null;
+  // Evitar consultas masivas continuas al portal externo.
+  const allowCatalog=!isBusinessSlot(scheduledTime,catalogPlan) &&
+    (!lastCatalog?.last || Date.now()-Date.parse(lastCatalog.last)>=5*60000);
   const manual = workerMode === "production"
     ? await env.LEDGER.prepare(
         "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' AND (kind!='catalog_master' OR ?=1) ORDER BY CASE WHEN kind='catalog_master' THEN 1 ELSE 0 END,created_at LIMIT 1"
