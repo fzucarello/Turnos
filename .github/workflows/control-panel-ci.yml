@@ -35,5 +35,13 @@ jobs:
       - name: Build Worker sin desplegar
         working-directory: infrastructure/scheduler
         run: npm run build
-      - name: Check admin JS syntax
-        run: node --check infrastructure/admin/worker.js
+      - name: Compile and validate admin Worker
+        run: |
+          node infrastructure/admin/build.mjs
+          node --check infrastructure/admin/dist/worker.mjs
+      - name: Build panel Worker sin desplegar
+        working-directory: infrastructure/scheduler
+        run: npx wrangler deploy --config ../admin/wrangler.jsonc --dry-run --outdir ../admin/dist-check
+      - name: Security smoke test del panel
+        run: |
+          node --input-type=module -e "import w from './infrastructure/admin/dist/worker.mjs';const r=await w.fetch(new Request('https://osep-admin.franchezuca.workers.dev/api/state'),{});if(r.status!==403)process.exit(1);console.log('Acceso anónimo rechazado correctamente.');"
