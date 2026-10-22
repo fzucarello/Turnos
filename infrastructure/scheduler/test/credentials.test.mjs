@@ -30,6 +30,7 @@ function env({ authorized = true, missing = false, error = false, completed = fa
     OSEP_USER: 'test-user-placeholder', OSEP_PASS: missing ? '' : 'test-password-placeholder',
     LEDGER: { prepare(sql) {
       queries++;
+      if (sql.includes("FROM osep_vault")) return {first:async()=>null};
       assert.match(sql, /state='accepted'/);
       return { bind(id, runId, oldest) {
         assert.equal(id, requestId); assert.equal(runId, 1234);
