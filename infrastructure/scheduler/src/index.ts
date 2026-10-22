@@ -1,4 +1,4 @@
-import { BOT_KEYS, botConfig, fingerprint, isBusinessSlot, schedule, text } from "./config.ts";
+import { BOT_KEYS, botConfig, fingerprint, isBusinessSlot, isCatalogWindow, schedule, text } from "./config.ts";
 import type { BotConfig } from "./config.ts";
 import { credentials } from "./credentials.ts";
 const ACTIVE = ["queued", "in_progress", "waiting", "pending", "requested"];
@@ -49,11 +49,11 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     "SELECT MAX(updated_at) AS last FROM manual_queue WHERE kind='catalog_master' AND state='accepted'"
   ).first<{last:string|null}>() : null;
   // Evitar consultas masivas continuas al portal externo.
-  const allowCatalog=!isBusinessSlot(scheduledTime,catalogPlan) &&
+  const allowCatalog=isCatalogWindow(scheduledTime,catalogPlan) &&
     (!lastCatalog?.last || Date.now()-Date.parse(lastCatalog.last)>=5*60000);
   const manual = workerMode === "production"
     ? await env.LEDGER.prepare(
-        "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' AND (kind!='catalog_master' OR ?=1) ORDER BY CASE WHEN kind='catalog_master' THEN 1 ELSE 0 END,created_at LIMIT 1"
+        "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' AND (kind NOT IN ('catalog','catalog_master') OR ?=1) ORDER BY CASE WHEN kind IN ('catalog','catalog_master') THEN 1 ELSE 0 END,created_at LIMIT 1"
       ).bind(allowCatalog?1:0).first<{id:string;dry_run:number;kind:string;config_json:string}>()
     : null;
   const mode = manual ? "manual" : workerMode;

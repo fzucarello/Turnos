@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import worker, { dispatch } from '../src/index.ts';
-import { botConfig, fingerprint, isBusinessSlot, schedule } from '../src/config.ts';
+import { botConfig, fingerprint, isBusinessSlot, isCatalogWindow, schedule } from '../src/config.ts';
+
+test('catálogo sólo fuera de la franja completa y con 20 minutos antes del reinicio', () => {
+  const plan = schedule({SCHEDULE_START:'05:03',SCHEDULE_END:'01:03',INTERVAL_MINUTES:'30'});
+  const at = hm => Date.parse('2026-10-22T'+hm+':00-03:00');
+  for (const hm of ['00:30','01:03','05:03','10:04','23:59','04:43','05:02'])
+    assert.equal(isCatalogWindow(at(hm),plan),false,hm);
+  for (const hm of ['01:04','02:00','04:42']) assert.equal(isCatalogWindow(at(hm),plan),true,hm);
+});
 
 const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url)));
 const fixture = Object.fromEntries(readFileSync(new URL('../.dev.vars.example', import.meta.url), 'utf8')
@@ -277,3 +285,5 @@ test('búsqueda manual NO se habilita si el Worker está en modo validación',as
   assert.equal(posts[0].inputs.dry_run,'true');
   assert.equal(db.prepare('SELECT state FROM manual_queue').get().state,'pending');
 });
+
+
