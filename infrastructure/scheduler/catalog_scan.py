@@ -57,6 +57,7 @@ async def main():
             await pick(page, "#id_dpto", selected_department)
             centers = []
             professionals = []
+            sample = []
             try:
                 await page.locator("input#buscar").first.click(timeout=TOUT)
                 await page.locator("#tblResultadoProfesionales").wait_for(timeout=TOUT)
@@ -70,13 +71,19 @@ async def main():
                       };
                     })
                 """)
-                centers=sorted(set(str(r.get("center","")).strip() for r in records if r.get("center")))
+                sample=await page.locator("#tblResultadoProfesionales tbody tr").evaluate_all("""
+                  rows => rows.slice(0,2).map(row => ({
+                    direct: Array.from(row.querySelectorAll(':scope > td')).map(td=>(td.innerText||'').trim().replace(/\\s+/g,' ').slice(0,100)),
+                    all: Array.from(row.querySelectorAll('td')).map(td=>(td.innerText||'').trim().replace(/\\s+/g,' ').slice(0,100))
+                  }))
+                """)
+                centers=[]  # No inventar centros hasta identificar la columna real
                 professionals=sorted(set(str(r.get("doctor","")).strip() for r in records if r.get("doctor")))
             except Exception:
                 pass  # Los desplegables ya son útiles; los resultados pueden no estar disponibles.
             result = {
               "services":services[:250],"zones":zones[:100],"departments":departments[:150],
-              "centers":centers[:250],"professionals":professionals[:250],
+              "centers":centers[:250],"professionals":professionals[:250], "sample":sample,
               "selectedService":selected_service,"selectedZone":selected_zone,
               "selectedDepartment":selected_department
             }
