@@ -1513,7 +1513,7 @@ async def flujo_turnos_nuevo(page) -> int:
         tokens = set(re.findall(r"[A-ZÁÉÍÓÚÜÑ]+", normalizar(dia)))
         nombres = ("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO")
         for i, nombre in enumerate(nombres):
-            if any(alias in tokens for alias in DAY_ALIASES[nombre]):
+            if nombre in tokens or any(alias in tokens for alias in DAY_ALIASES[nombre]):
                 return i
         return None
 
