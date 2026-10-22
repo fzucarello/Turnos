@@ -49,10 +49,19 @@ async def main():
             services = await options(page, "#servimod")
             selected_service = os.environ["OBJ_SERVICIO"].strip()
             await pick(page, "#servimod", selected_service)
-            zones = await options(page, "#id_zona")
+            zones = [z for z in await options(page, "#id_zona") if not z.upper().startswith(("SELECCIONAR","SELECCIONE"))]
             selected_zone = os.environ["OBJ_ZONA"].strip()
+            departments_by_zone = {}
+            # Obtener los departamentos de cada zona de la especialidad, sin
+            # buscar médicos ni abrir agendas. Máximo 20 zonas por seguridad.
+            for zone in zones[:20]:
+                await pick(page, "#id_zona", zone)
+                departments_by_zone[zone] = [
+                    d for d in await options(page, "#id_dpto")
+                    if not d.upper().startswith(("SELECCIONAR","SELECCIONE"))
+                ]
             await pick(page, "#id_zona", selected_zone)
-            departments = await options(page, "#id_dpto")
+            departments = departments_by_zone.get(selected_zone, await options(page, "#id_dpto"))
             selected_department = os.environ["OBJ_DEPTO"].strip()
             await pick(page, "#id_dpto", selected_department)
             centers = []
@@ -91,6 +100,7 @@ async def main():
             result = {
               "services":services[:250],"zones":zones[:100],"departments":departments[:150],
               "centers":centers[:250],"professionals":professionals[:250],
+              "departmentsByZone":departments_by_zone,
               "selectedService":selected_service,"selectedZone":selected_zone,
               "selectedDepartment":selected_department
             }
