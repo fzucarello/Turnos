@@ -2,7 +2,7 @@
 export const BOT_KEYS = [
   "OBJ_SERVICIO", "OBJ_ZONA", "OBJ_DEPTO", "OBJ_MEDICO", "OBJ_PROFESIONAL",
   "OBJ_DOMICILIO", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP",
-  "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_FLEXIBLE",
+  "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_HORA_FLEXIBLE",
   "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "PORTAL_URL", "HEADLESS",
   "TIMEOUT_MS", "STOP_AFTER_LOGIN", "DRY_RUN",
 ] as const;
@@ -12,7 +12,7 @@ const CLOCK = new Intl.DateTimeFormat("en-GB", {
   timeZone: "America/Argentina/Mendoza", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 const BOOLEAN_KEYS = ["OBJ_HORA_FLEXIBLE", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "HEADLESS", "STOP_AFTER_LOGIN", "DRY_RUN"];
-const OPTIONAL_KEYS = ["OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP"];
+const OPTIONAL_KEYS = ["OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA"];
 
 export function text(env: Variables, key: string, optional = false): string {
   const value = env[key as keyof Env];
@@ -59,7 +59,16 @@ export function botConfig(env: Variables, forceDryRun = false): BotConfig {
   for (const key of BOOLEAN_KEYS) if (!["true", "false"].includes(config[key as keyof BotConfig])) {
     throw new Error(`config_invalid_${key}`);
   }
-  if (!["EARLIEST", "LATEST"].includes(config.OBJ_HORA_PRIORIDAD)) throw new Error("config_invalid_OBJ_HORA_PRIORIDAD");
+  if (!["EARLIEST", "LATEST", "CLOSEST"].includes(config.OBJ_HORA_PRIORIDAD)) throw new Error("config_invalid_OBJ_HORA_PRIORIDAD");
+  if (config.OBJ_HORA_PRIORIDAD === "CLOSEST") minuteOfDay(config.OBJ_HORA_OBJETIVO, "OBJ_HORA_OBJETIVO");
+  if (config.OBJ_HORARIOS_SEMANA) {
+    let week: unknown;
+    try { week = JSON.parse(config.OBJ_HORARIOS_SEMANA); } catch { throw new Error("config_invalid_OBJ_HORARIOS_SEMANA"); }
+    if (!Array.isArray(week) || week.length !== 7 || !week.every(row =>
+        row === null || (Array.isArray(row) && row.length === 2 && row.every(v => typeof v === "string") &&
+        minuteOfDay(row[0], "OBJ_HORARIOS_SEMANA") <= minuteOfDay(row[1], "OBJ_HORARIOS_SEMANA"))))
+      throw new Error("config_invalid_OBJ_HORARIOS_SEMANA");
+  }
   const min = !config.OBJ_HORA_MIN || config.OBJ_HORA_MIN === "false" ? 0 : minuteOfDay(config.OBJ_HORA_MIN, "OBJ_HORA_MIN");
   const max = !config.OBJ_HORA_MAX || config.OBJ_HORA_MAX === "false" ? 1439 : minuteOfDay(config.OBJ_HORA_MAX, "OBJ_HORA_MAX");
   if (min > max) throw new Error("config_invalid_OBJ_HORA_RANGE");
