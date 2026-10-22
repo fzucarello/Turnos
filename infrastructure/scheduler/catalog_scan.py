@@ -57,7 +57,6 @@ async def main():
             await pick(page, "#id_dpto", selected_department)
             centers = []
             professionals = []
-            sample = []
             try:
                 await page.locator("input#buscar").first.click(timeout=TOUT)
                 await page.locator("#tblResultadoProfesionales").wait_for(timeout=TOUT)
@@ -71,19 +70,27 @@ async def main():
                       };
                     })
                 """)
-                sample=await page.locator("#tblResultadoProfesionales tbody tr").evaluate_all("""
-                  rows => rows.slice(0,2).map(row => ({
-                    direct: Array.from(row.querySelectorAll(':scope > td')).map(td=>(td.innerText||'').trim().replace(/\\s+/g,' ').slice(0,100)),
-                    all: Array.from(row.querySelectorAll('td')).map(td=>(td.innerText||'').trim().replace(/\\s+/g,' ').slice(0,100))
-                  }))
-                """)
-                centers=[]  # No inventar centros hasta identificar la columna real
-                professionals=sorted(set(str(r.get("doctor","")).strip() for r in records if r.get("doctor")))
+                for record in records:
+                    domicilio = re.sub(r"\\s+", " ", str(record.get("center", "")).strip())
+                    profesional = re.sub(r"^\\d+\\s+", "", str(record.get("doctor", "")).strip())
+                    if not domicilio:
+                        continue
+                    if "OSEP HUNUC HUAR" in domicilio.upper():
+                        nombre = "OSEP HUNUC HUAR"
+                    else:
+                        nombre = domicilio
+                        if profesional and nombre.upper().startswith(profesional.upper()):
+                            nombre = nombre[len(profesional):].strip()
+                        nombre = re.split(r"\\b(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA) SECCION\\b|\\(\\d{4}\\)|\\bTEL\\.?", nombre, flags=re.I)[0].strip()
+                    if nombre:
+                        centers.append(nombre[:120])
+                centers=sorted(set(centers))
+                professionals=sorted(set(re.sub(r"^\\d+\\s+", "", str(r.get("doctor","")).strip()) for r in records if r.get("doctor")))
             except Exception:
                 pass  # Los desplegables ya son útiles; los resultados pueden no estar disponibles.
             result = {
               "services":services[:250],"zones":zones[:100],"departments":departments[:150],
-              "centers":centers[:250],"professionals":professionals[:250], "sample":sample,
+              "centers":centers[:250],"professionals":professionals[:250],
               "selectedService":selected_service,"selectedZone":selected_zone,
               "selectedDepartment":selected_department
             }
