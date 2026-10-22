@@ -66,7 +66,7 @@ async def main():
                       const td = Array.from(row.querySelectorAll('td'));
                       return {
                         doctor: (td[0]?.innerText || '').trim(),
-                        center: (td[1]?.innerText || '').trim().split(/\\n/)[0]?.trim() || ''
+                        center: (td[1]?.innerText || '').trim()
                       };
                     })
                 """)
