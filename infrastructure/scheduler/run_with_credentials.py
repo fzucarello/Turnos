@@ -164,7 +164,11 @@ def main(check_only=False):
     print("Bot iniciado. El detalle de esta ejecución se conserva únicamente en Cloudflare.", flush=True)
     try:
         code, log, truncated = run_private_bot(private_child_environment(os.environ, config, credentials))
-        code = code if code in {0,1,3,6} else 3
+        if config.get("OBJ_CATALOGO") == "true":
+            # Un catálogo no reserva turnos: nunca interpretar exit 1 como reserva.
+            code = 0 if code == 0 else 6 if code == 6 else 3
+        else:
+            code = code if code in {0,1,3,6} else 3
     except Exception:
         code, log, truncated = 5, "No se pudo iniciar o supervisar el proceso del bot.", False
     try:
