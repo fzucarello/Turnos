@@ -8,7 +8,7 @@ import { botConfig, fingerprint, isBusinessSlot, schedule } from '../src/config.
 const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url)));
 const fixture = Object.fromEntries(readFileSync(new URL('../.dev.vars.example', import.meta.url), 'utf8')
   .split(/\r?\n/).map(line => /^([A-Z_]+)="(.*)"$/.exec(line)).filter(Boolean).map(m => [m[1], m[2]]));
-const schema = ['0001_dispatches.sql', '0002_config_fingerprint.sql', '0003_private_runtime.sql','0003_control_panel.sql'].map(name => readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8')).join('\n');
+const schema = ['0001_dispatches.sql', '0002_config_fingerprint.sql', '0003_private_runtime.sql','0003_control_panel.sql','0004_catalog_vault.sql'].map(name => readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8')).join('\n');
 Object.assign(fixture,{OBJ_DOMICILIO_FLEXIBLE:"false",OBJ_PROFESIONAL_FLEXIBLE:"false"});
 const originalFetch = globalThis.fetch;
 const originalNow = Date.now;
