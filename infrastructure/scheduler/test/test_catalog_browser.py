@@ -102,6 +102,11 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
             await scan(self.page,"SERVICIO","*","*",3000)
         self.assertIn("ANTERIOR",await self.page.locator("#tblResultadoProfesionales").inner_text())
 
+    async def test_rendered_record_mismatch_is_rejected(self):
+        await self.page.add_style_tag(content='td:nth-child(2) { text-transform: uppercase }')
+        with self.assertRaisesRegex(CatalogError,'browser_result_mismatch'):
+            await scan(self.page,'SERVICIO','*','*',3000)
+
     async def test_comparison_mode_covers_two_zones_without_partial_publication(self):
         with patch.object(SessionHTTP,"read",self.transport()):
             result,metrics=await scan(self.page,"SERVICIO","*","*",3000,True)
