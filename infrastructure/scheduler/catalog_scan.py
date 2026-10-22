@@ -9,6 +9,8 @@ import logging
 import os
 import re
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from playwright.async_api import async_playwright
 from app import login, PORTAL_URL, TOUT, HEADLESS
