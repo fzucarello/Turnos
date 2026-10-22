@@ -1,0 +1,12 @@
+{
+  "name": "osep-private-control",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "npm run build && node --check dist/worker.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": { "wrangler": "^4.145.0" }
+}
