@@ -2,7 +2,7 @@
 export const BOT_KEYS = [
   "OBJ_SERVICIO", "OBJ_ZONA", "OBJ_DEPTO", "OBJ_MEDICO", "OBJ_PROFESIONAL",
   "OBJ_DOMICILIO", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP",
-  "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_HORA_FLEXIBLE",
+  "OBJ_FECHA_DESDE", "OBJ_EXCLUSIONES_SEMANA", "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_HORA_FLEXIBLE",
   "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "PORTAL_URL", "HEADLESS",
   "TIMEOUT_MS", "STOP_AFTER_LOGIN", "DRY_RUN", "OBJ_CATALOGO",
 ] as const;
@@ -12,7 +12,7 @@ const CLOCK = new Intl.DateTimeFormat("en-GB", {
   timeZone: "America/Argentina/Mendoza", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 const BOOLEAN_KEYS = ["OBJ_HORA_FLEXIBLE", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "HEADLESS", "STOP_AFTER_LOGIN", "DRY_RUN", "OBJ_CATALOGO"];
-const OPTIONAL_KEYS = ["OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_CATALOGO"];
+const OPTIONAL_KEYS = ["OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_CATALOGO", "OBJ_FECHA_DESDE", "OBJ_EXCLUSIONES_SEMANA"];
 
 export function text(env: Variables, key: string, optional = false): string {
   const value = env[key as keyof Env];
@@ -21,7 +21,7 @@ export function text(env: Variables, key: string, optional = false): string {
     throw new Error(`config_invalid_${key}`);
   }
   const result = value.trim();
-  if ((!optional && !result) || result.length > 250 || /[\u0000-\u001f\u007f]/.test(result)) {
+  if ((!optional && !result) || result.length > (key === "OBJ_EXCLUSIONES_SEMANA" ? 2000 : 250) || /[\u0000-\u001f\u007f]/.test(result)) {
     throw new Error(`config_invalid_${key}`);
   }
   return result;
@@ -68,6 +68,38 @@ export function botConfig(env: Variables, forceDryRun = false): BotConfig {
         row === null || (Array.isArray(row) && row.length === 2 && row.every(v => typeof v === "string") &&
         minuteOfDay(row[0], "OBJ_HORARIOS_SEMANA") <= minuteOfDay(row[1], "OBJ_HORARIOS_SEMANA"))))
       throw new Error("config_invalid_OBJ_HORARIOS_SEMANA");
+  }
+  if (config.OBJ_FECHA_DESDE) {
+    const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(config.OBJ_FECHA_DESDE);
+    if(!m)throw new Error("config_invalid_OBJ_FECHA_DESDE");
+    const parsed=new Date(config.OBJ_FECHA_DESDE+"T12:00:00Z");
+    if(!Number.isFinite(parsed.getTime())||parsed.toISOString().slice(0,10)!==config.OBJ_FECHA_DESDE)
+      throw new Error("config_invalid_OBJ_FECHA_DESDE");
+  }
+  if(config.OBJ_EXCLUSIONES_SEMANA){
+    let blocked:unknown;
+    try{blocked=JSON.parse(config.OBJ_EXCLUSIONES_SEMANA);}catch{throw new Error("config_invalid_OBJ_EXCLUSIONES_SEMANA");}
+    let weekly:unknown=null;
+    try{weekly=config.OBJ_HORARIOS_SEMANA?JSON.parse(config.OBJ_HORARIOS_SEMANA):null;}catch{throw new Error("config_invalid_OBJ_HORARIOS_SEMANA");}
+    if(!Array.isArray(blocked)||blocked.length!==7||!Array.isArray(weekly)||weekly.length!==7)
+      throw new Error("config_invalid_OBJ_EXCLUSIONES_SEMANA");
+    for(let i=0;i<7;i++){
+      const intervals=blocked[i],day=weekly[i];
+      if(!Array.isArray(intervals)||intervals.length>8||day===null&&intervals.length>0)
+        throw new Error("config_invalid_OBJ_EXCLUSIONES_SEMANA");
+      const times:number[][]=[];
+      for(const e of intervals){
+        if(!Array.isArray(e)||e.length!==2||e.some(v=>typeof v!=="string"))
+          throw new Error("config_invalid_OBJ_EXCLUSIONES_SEMANA");
+        const a=minuteOfDay(e[0],"OBJ_EXCLUSIONES_SEMANA"),b=minuteOfDay(e[1],"OBJ_EXCLUSIONES_SEMANA");
+        if(a>=b||day!==null&&(a<minuteOfDay(day[0],"OBJ_HORARIOS_SEMANA")||b>minuteOfDay(day[1],"OBJ_HORARIOS_SEMANA")))
+          throw new Error("config_invalid_OBJ_EXCLUSIONES_SEMANA");
+        times.push([a,b]);
+      }
+      times.sort((a,b)=>a[0]-b[0]);
+      if(times.some((e,j)=>j>0&&e[0]<times[j-1][1]))
+        throw new Error("config_invalid_OBJ_EXCLUSIONES_SEMANA");
+    }
   }
   const min = !config.OBJ_HORA_MIN || config.OBJ_HORA_MIN === "false" ? 0 : minuteOfDay(config.OBJ_HORA_MIN, "OBJ_HORA_MIN");
   const max = !config.OBJ_HORA_MAX || config.OBJ_HORA_MAX === "false" ? 1439 : minuteOfDay(config.OBJ_HORA_MAX, "OBJ_HORA_MAX");
