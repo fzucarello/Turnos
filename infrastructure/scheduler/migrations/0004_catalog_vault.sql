@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS osep_vault(
  updated_by TEXT NOT NULL
 );
 ALTER TABLE manual_queue ADD COLUMN kind TEXT NOT NULL DEFAULT 'appointment';
+ALTER TABLE manual_queue ADD COLUMN catalog_status TEXT;
 
 CREATE TABLE IF NOT EXISTS osep_catalog_relations (
  service TEXT NOT NULL, zone TEXT NOT NULL, department TEXT NOT NULL,
