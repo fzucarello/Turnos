@@ -46,7 +46,7 @@ function parseCatalog(log: string): Record<string,unknown> | null {
   try {
     const d = JSON.parse(line.slice(marker.length));
     const names=["services","zones","departments","centers","professionals"];
-    if(!d || !names.every(k=>Array.isArray(d[k]) && d[k].length<=250 &&
+    if(!d || d.captureVersion!==2 || !names.every(k=>Array.isArray(d[k]) && d[k].length<=250 &&
       d[k].every((v:unknown)=>typeof v==="string"&&v.length<250)))return null;
     for(const k of ["selectedService","selectedZone","selectedDepartment"])
       if(typeof d[k]!=="string"||d[k].length>250)return null;
@@ -56,14 +56,14 @@ function parseCatalog(log: string): Record<string,unknown> | null {
 
 type MasterEntry = [string,string,[string,string][]];
 type MasterScan = {service:string;services:string[];zones:string[];departmentsByZone:Record<string,string[]>;entries:MasterEntry[];errors:unknown[]};
-async function parseMaster(log:string): Promise<MasterScan|null> {
+export async function parseMaster(log:string): Promise<MasterScan|null> {
   const line=log.split("\n").find(x=>x.startsWith("OSEP_CATALOG_PACK="));
   if(!line)return null;
   const encoded=line.slice("OSEP_CATALOG_PACK=".length).trim();
   if(!/^[A-Za-z0-9+/=]{1,26000}$/.test(encoded))return null;
   try {
     const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
-    const decoded=await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"))).text();
+    const decoded=await smallBody({body:new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"))},1500000);
     if(decoded.length>1500000)return null;
     const d=JSON.parse(decoded);
     const short=(v:unknown)=>typeof v==="string"&&v.length>0&&v.length<251;
@@ -74,6 +74,20 @@ async function parseMaster(log:string): Promise<MasterScan|null> {
     if(!Object.entries(d.departmentsByZone).every(([zone,v])=>short(zone)&&arr(v,50)))return null;
     if(!d.entries.every((e:unknown)=>Array.isArray(e)&&e.length===3&&short(e[0])&&short(e[1])&&
       Array.isArray(e[2])&&e[2].length<=500&&e[2].every((row:unknown)=>Array.isArray(row)&&row.length===2&&row.every(short))))return null;
+    // No aceptar paquetes antiguos que pudieron leer una tabla anterior.
+    if(d.captureVersion!==2 || d.errors.length!==0 || !d.zones.length ||
+       new Set(d.zones).size!==d.zones.length || !d.services.includes(d.service))return null;
+    const expected=new Set<string>();
+    for(const zone of d.zones){
+      const departments=d.departmentsByZone[zone];
+      if(!Array.isArray(departments)||!departments.length||new Set(departments).size!==departments.length)return null;
+      for(const department of departments)expected.add(JSON.stringify([zone,department]));
+    }
+    if(Object.keys(d.departmentsByZone).length!==d.zones.length || expected.size!==d.entries.length)return null;
+    for(const [zone,department] of d.entries){
+      if(!expected.delete(JSON.stringify([zone,department])))return null;
+    }
+    if(expected.size)return null;
     return d as MasterScan;
   }catch{return null;}
 }
@@ -83,7 +97,7 @@ function reply(status: number, data: unknown) {
   } });
 }
 
-async function smallBody(request: Request, limit: number): Promise<string> {
+async function smallBody(request: Pick<Request,"body">, limit: number): Promise<string> {
   if (!request.body) throw new Error("missing_body");
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -158,36 +172,59 @@ export async function credentials(request: Request, env: Env, keys: JWTVerifyGet
       const current = await runtimeCredentials(env);
       for (const value of [env.OSEP_USER, env.OSEP_PASS, current.OSEP_USER, current.OSEP_PASS])
         if (value) privateLog = privateLog.split(value).join("[REDACTED]");
-      const isCatalog = JSON.parse(accepted.config_json||"{}").OBJ_CATALOGO==="true";
-      const isMaster = isCatalog && JSON.parse(accepted.config_json||"{}").OBJ_ZONA==="*";
-      const catalog = isCatalog && !isMaster && body.status==="prueba_finalizada" ? parseCatalog(privateLog) : null;
-      const master = isMaster && body.status==="prueba_finalizada" ? await parseMaster(privateLog) : null;
-      const saved = await env.LEDGER.prepare(
-        "UPDATE dispatches SET bot_status=?,bot_exit_code=?,bot_log=?,bot_log_truncated=?,bot_completed_at=?,config_json=NULL WHERE request_id=? AND run_id=? AND bot_completed_at IS NULL",
-      ).bind(body.status, body.exit_code, privateLog, body.log_truncated ? 1 : 0, new Date().toISOString(), body.request_id, Number(payload.run_id)).run();
-      if (saved.meta.changes !== 1) return reply(409, { error: "already_completed" });
-      if (catalog) await env.LEDGER.prepare(
+      const snapshot=JSON.parse(accepted.config_json||"{}");
+      const isCatalog = snapshot.OBJ_CATALOGO==="true";
+      const isComparison=isCatalog && snapshot.OBJ_DEPTO==="__CATALOG_COMPARE__";
+      const isMaster = isCatalog && snapshot.OBJ_ZONA==="*" && !isComparison;
+      const successful=body.status==="prueba_finalizada" && body.exit_code===0 && !body.log_truncated;
+      const single = isCatalog && !isMaster && !isComparison && successful ? parseCatalog(privateLog) : null;
+      const catalog=single && single.selectedService===snapshot.OBJ_SERVICIO &&
+        single.selectedZone===snapshot.OBJ_ZONA && single.selectedDepartment===snapshot.OBJ_DEPTO ? single:null;
+      const master = isMaster && successful ? await parseMaster(privateLog) : null;
+      const validMaster=master?.service===snapshot.OBJ_SERVICIO ? master : null;
+      let validComparison=false;
+      if(isComparison && successful){
+        try{
+          const line=privateLog.split("\n").find(s=>s.startsWith("OSEP_CATALOG_METRICS="));
+          const m=JSON.parse(line?.slice("OSEP_CATALOG_METRICS=".length)||"null");
+          validComparison=m?.equivalent===true && m?.comparisons===2 && m?.combinations===2;
+        }catch{/* Diagnóstico inválido: no declarar éxito. */}
+      }
+      const validCatalog=!isCatalog || !!(isMaster?validMaster:isComparison?validComparison:catalog);
+      const status=isCatalog&&!validCatalog?"error_bot":body.status;
+      const exitCode=isCatalog&&!validCatalog&&body.exit_code===0?3:body.exit_code;
+      const timestamp=new Date().toISOString();
+      const completion=env.LEDGER.prepare(
+        "UPDATE dispatches SET bot_status=?,bot_exit_code=?,bot_log=?,bot_log_truncated=?,bot_completed_at=?,config_json=NULL WHERE request_id=? AND run_id=? AND bot_completed_at IS NULL"
+      ).bind(status,exitCode,privateLog,body.log_truncated?1:0,timestamp,body.request_id,Number(payload.run_id));
+      const statements:D1PreparedStatement[]=[];
+      if(catalog)statements.push(env.LEDGER.prepare(
         "INSERT INTO osep_catalog(id,catalog_json,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET catalog_json=excluded.catalog_json,updated_at=excluded.updated_at"
-      ).bind(JSON.stringify(catalog),new Date().toISOString()).run();
-      if(master){
-        const timestamp=new Date().toISOString();
-        const statements=master.entries.map(([zone,department,records])=>env.LEDGER.prepare(
+      ).bind(JSON.stringify(catalog),timestamp));
+      if(validMaster){
+        for(const [zone,department,records] of validMaster.entries)statements.push(env.LEDGER.prepare(
           "INSERT INTO osep_catalog_relations(service,zone,department,records_json,record_count,scan_status,updated_at) VALUES(?,?,?,?,?,'complete',?) ON CONFLICT(service,zone,department) DO UPDATE SET records_json=excluded.records_json,record_count=excluded.record_count,scan_status=excluded.scan_status,updated_at=excluded.updated_at"
-        ).bind(master.service,zone,department,JSON.stringify(records),records.length,timestamp));
-        if(statements.length)await env.LEDGER.batch(statements);
+        ).bind(validMaster.service,zone,department,JSON.stringify(records),records.length,timestamp));
         const existing=await env.LEDGER.prepare("SELECT catalog_json FROM osep_catalog WHERE id=1").first<{catalog_json:string}>();
         const base=existing?JSON.parse(existing.catalog_json):{};
-        base.services=[...new Set([...(base.services||[]),...master.services])].sort();
-        base.zones=[...new Set([...(base.zones||[]),...master.zones])].sort();
-        base.departmentsByZone={...(base.departmentsByZone||{}),...master.departmentsByZone};
-        await env.LEDGER.prepare("INSERT INTO osep_catalog(id,catalog_json,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET catalog_json=excluded.catalog_json,updated_at=excluded.updated_at")
-          .bind(JSON.stringify(base),timestamp).run();
+        base.services=[...new Set([...(base.services||[]),...validMaster.services])].sort();
+        base.zones=[...new Set([...(base.zones||[]),...validMaster.zones])].sort();
+        base.departmentsByZone={...(base.departmentsByZone||{}),...validMaster.departmentsByZone};
+        statements.push(env.LEDGER.prepare("INSERT INTO osep_catalog(id,catalog_json,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET catalog_json=excluded.catalog_json,updated_at=excluded.updated_at")
+          .bind(JSON.stringify(base),timestamp));
       }
-      if(typeof accepted.slot==="string"&&accepted.slot.startsWith("manual:")){
+      if(isCatalog && typeof accepted.slot==="string"&&accepted.slot.startsWith("manual:")){
         const id=accepted.slot.split(":")[1];
-        await env.LEDGER.prepare("UPDATE manual_queue SET catalog_status=?,updated_at=?,error_code=? WHERE id=? AND state='accepted'")
-          .bind(body.status==="prueba_finalizada"&&(!isMaster||master)?"completed":"error",new Date().toISOString(),
-            isMaster&&!master?"catalog_invalid_or_incomplete":null,id).run();
+        statements.push(env.LEDGER.prepare("UPDATE manual_queue SET catalog_status=?,updated_at=?,error_code=? WHERE id=? AND state='accepted'")
+          .bind(validCatalog?"completed":"error",timestamp,validCatalog?null:"catalog_invalid_or_incomplete",id));
+      }
+      if(statements.length){
+        // Caché y resultado quedan confirmados juntos o se revierten juntos.
+        const saved=await env.LEDGER.batch([completion,...statements]);
+        if(saved[0].meta.changes!==1)return reply(409,{error:"already_completed"});
+      }else{
+        const saved=await completion.run();
+        if(saved.meta.changes!==1)return reply(409,{error:"already_completed"});
       }
       console.log(JSON.stringify({ event: "private_result_saved", run_id: Number(payload.run_id) }));
       return reply(200, { ok: true });
@@ -215,3 +252,4 @@ export async function credentials(request: Request, env: Env, keys: JWTVerifyGet
     return reply(401, { error: "authorization_unavailable" });
   }
 }
+

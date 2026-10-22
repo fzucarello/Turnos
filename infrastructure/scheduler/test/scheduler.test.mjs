@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import worker, { dispatch } from '../src/index.ts';
-import { botConfig, fingerprint, isBusinessSlot, isCatalogWindow, schedule } from '../src/config.ts';
+import { botConfig, fingerprint, isBusinessSlot, isCatalogWindow, isComparisonWindow, schedule } from '../src/config.ts';
+
+test('diagnóstico manual no puede ocupar ni acercarse a una búsqueda real', () => {
+  const plan=schedule({SCHEDULE_START:'05:03',SCHEDULE_END:'01:03',INTERVAL_MINUTES:'30'});
+  const at=hm=>Date.parse('2026-10-22T'+hm+':00-03:00');
+  assert.equal(isComparisonWindow(at('20:33'),plan),false);
+  assert.equal(isComparisonWindow(at('20:43'),plan),false);
+  assert.equal(isComparisonWindow(at('20:34'),plan),true);
+  assert.equal(isComparisonWindow(at('05:02'),plan),false);
+});
 
 test('catálogo sólo fuera de la franja completa y con 20 minutos antes del reinicio', () => {
   const plan = schedule({SCHEDULE_START:'05:03',SCHEDULE_END:'01:03',INTERVAL_MINUTES:'30'});
@@ -286,4 +295,20 @@ test('búsqueda manual NO se habilita si el Worker está en modo validación',as
   assert.equal(db.prepare('SELECT state FROM manual_queue').get().state,'pending');
 });
 
+test('catálogo pendiente espera toda la franja activa; diagnóstico fuerza el script de sólo lectura', async()=>{
+  const {db,env}=setup('production');
+  const bot=botConfig(fixture);
+  for(const [id,kind] of [['master','catalog_master'],['compare','catalog_compare']])
+    db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,kind,state,config_json) VALUES(?,?,?,?,0,?,'pending',?)")
+      .run(id,new Date(time).toISOString(),new Date(time).toISOString(),'test',kind,JSON.stringify(bot));
+  const posts=mockGitHub();
+  Date.now=()=>time+60000;
+  await dispatch({...controller,scheduledTime:Date.now()},env);
+  assert.equal(posts.length,1);
+  const snapshot=JSON.parse(db.prepare('SELECT config_json FROM dispatches').get().config_json);
+  assert.equal(snapshot.OBJ_CATALOGO,'true');
+  assert.equal(snapshot.DRY_RUN,'true');
+  assert.equal(snapshot.OBJ_DEPTO,'__CATALOG_COMPARE__');
+  assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='master'").get().state,'pending');
+});
 

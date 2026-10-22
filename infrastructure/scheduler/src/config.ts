@@ -65,6 +65,15 @@ export function isCatalogWindow(time: number, plan: ReturnType<typeof schedule>)
   return elapsed > duration && untilStart > 20;
 }
 
+export function isComparisonWindow(time: number, plan: ReturnType<typeof schedule>): boolean {
+  // Diagnóstico manual de dos consultas: sólo si no ocupa un slot programado
+  // y ningún slot puede llegar durante el máximo de 20 minutos del workflow.
+  for(let offset=0;offset<=20;offset++){
+    if(isBusinessSlot(time+offset*60000,plan))return false;
+  }
+  return true;
+}
+
 export function botConfig(env: Variables, forceDryRun = false): BotConfig {
   const config = Object.fromEntries(BOT_KEYS.map(key => [key, text(env, key,
     OPTIONAL_KEYS.includes(key))])) as BotConfig;
@@ -138,3 +147,4 @@ export async function fingerprint(json: string): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(json));
   return Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, "0")).join("");
 }
+
