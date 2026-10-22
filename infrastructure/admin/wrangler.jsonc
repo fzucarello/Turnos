@@ -1,0 +1,16 @@
+{
+  "$schema": "../scheduler/node_modules/wrangler/config-schema.json",
+  "name": "osep-admin",
+  "main": "dist/worker.mjs",
+  "account_id": "bf1a13a86a0c4508e22f959c8454e963",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "keep_vars": true,
+  "observability": {"enabled": true, "redact_query_string": true},
+  "d1_databases": [{
+    "binding": "LEDGER",
+    "database_name": "osep-scheduler-ledger",
+    "database_id": "481f956d-cab2-41f9-94ce-139e7425e0d5"
+  }]
+}
