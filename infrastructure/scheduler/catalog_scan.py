@@ -80,8 +80,8 @@ async def main():
                     })
                 """)
                 for record in records:
-                    domicilio = re.sub(r"\\s+", " ", str(record.get("center", "")).strip())
-                    profesional = re.sub(r"^\\d+\\s+", "", str(record.get("doctor", "")).strip())
+                    domicilio = re.sub(r"\s+", " ", str(record.get("center", "")).strip())
+                    profesional = re.sub(r"^\d+\s+", "", str(record.get("doctor", "")).strip())
                     if not domicilio:
                         continue
                     if "OSEP HUNUC HUAR" in domicilio.upper():
@@ -90,11 +90,11 @@ async def main():
                         nombre = domicilio
                         if profesional and nombre.upper().startswith(profesional.upper()):
                             nombre = nombre[len(profesional):].strip()
-                        nombre = re.split(r"\\b(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA) SECCION\\b|\\(\\d{4}\\)|\\bTEL\\.?", nombre, flags=re.I)[0].strip()
+                        nombre = re.split(r"\b(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA) SECCION\b|\(\d{4}\)|\bTEL\.?", nombre, flags=re.I)[0].strip()
                     if nombre:
                         centers.append(nombre[:120])
                 centers=sorted(set(centers))
-                professionals=sorted(set(re.sub(r"^\\d+\\s+", "", str(r.get("doctor","")).strip()) for r in records if r.get("doctor")))
+                professionals=sorted(set(re.sub(r"^\d+\s+", "", str(r.get("doctor","")).strip()) for r in records if r.get("doctor")))
             except Exception:
                 pass  # Los desplegables ya son útiles; los resultados pueden no estar disponibles.
             result = {
