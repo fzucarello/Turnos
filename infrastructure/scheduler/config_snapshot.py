@@ -9,11 +9,11 @@ import sys
 BOT_KEYS = {
     "OBJ_SERVICIO", "OBJ_ZONA", "OBJ_DEPTO", "OBJ_MEDICO", "OBJ_PROFESIONAL",
     "OBJ_DOMICILIO", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP",
-    "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_FLEXIBLE",
+    "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_HORA_FLEXIBLE",
     "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "PORTAL_URL", "HEADLESS",
     "TIMEOUT_MS", "STOP_AFTER_LOGIN", "DRY_RUN",
 }
-OPTIONAL = {"OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP"}
+OPTIONAL = {"OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA"}
 BOOLEANS = {"OBJ_HORA_FLEXIBLE", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "HEADLESS", "STOP_AFTER_LOGIN", "DRY_RUN"}
 
 
@@ -38,6 +38,8 @@ def validate_snapshot(raw, expected_hash, force_dry_run):
     if isinstance(config, dict) and set(config).issubset(BOT_KEYS):
         config.setdefault("OBJ_DOMICILIO_FLEXIBLE", "false")
         config.setdefault("OBJ_PROFESIONAL_FLEXIBLE", "false")
+        config.setdefault("OBJ_HORA_OBJETIVO", "")
+        config.setdefault("OBJ_HORARIOS_SEMANA", "")
     if not isinstance(config, dict) or set(config) != BOT_KEYS:
         raise ValueError("La configuración debe contener únicamente los parámetros autorizados del bot.")
     for key, value in config.items():
@@ -48,8 +50,24 @@ def validate_snapshot(raw, expected_hash, force_dry_run):
     for key in BOOLEANS:
         if config[key] not in {"true", "false"}:
             raise ValueError(f"config_invalid_{key}")
-    if config["OBJ_HORA_PRIORIDAD"] not in {"EARLIEST", "LATEST"}:
+    if config["OBJ_HORA_PRIORIDAD"] not in {"EARLIEST", "LATEST", "CLOSEST"}:
         raise ValueError("config_invalid_OBJ_HORA_PRIORIDAD")
+    if config["OBJ_HORA_PRIORIDAD"] == "CLOSEST":
+        minute_of_day(config["OBJ_HORA_OBJETIVO"], "OBJ_HORA_OBJETIVO")
+    if config["OBJ_HORARIOS_SEMANA"]:
+        try:
+            week = json.loads(config["OBJ_HORARIOS_SEMANA"])
+            if not isinstance(week, list) or len(week) != 7:
+                raise ValueError("Invalid week")
+            for item in week:
+                if item is None:
+                    continue
+                if not isinstance(item, list) or len(item) != 2 or any(not isinstance(v, str) for v in item):
+                    raise ValueError("Invalid day")
+                if minute_of_day(item[0], "OBJ_HORARIOS_SEMANA") > minute_of_day(item[1], "OBJ_HORARIOS_SEMANA"):
+                    raise ValueError("Invalid range")
+        except (ValueError, TypeError, KeyError):
+            raise ValueError("config_invalid_OBJ_HORARIOS_SEMANA") from None
     min_hour = 0 if config["OBJ_HORA_MIN"] == "false" else minute_of_day(config["OBJ_HORA_MIN"], "OBJ_HORA_MIN")
     max_hour = 1439 if config["OBJ_HORA_MAX"] == "false" else minute_of_day(config["OBJ_HORA_MAX"], "OBJ_HORA_MAX")
     if min_hour > max_hour:
