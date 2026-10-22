@@ -22,10 +22,18 @@ function setup(mode = 'validate') {
   db.exec(schema);
   const LEDGER = {
     prepare(sql) {
-      return { bind(...params) { return { async run() {
-        const result = db.prepare(sql).run(...params);
-        return { meta: { changes: Number(result.changes) } };
-      } }; } };
+      return {
+        async first() { return db.prepare(sql).get() ?? null; },
+        bind(...params) {
+          return {
+            async first() { return db.prepare(sql).get(...params) ?? null; },
+            async run() {
+              const result = db.prepare(sql).run(...params);
+              return { meta: { changes: Number(result.changes) } };
+            }
+          };
+        }
+      };
     },
   };
   return { db, env: { ...fixture, MODE: mode, GITHUB_TOKEN: 'test-placeholder', LEDGER } };
