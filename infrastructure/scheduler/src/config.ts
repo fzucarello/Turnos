@@ -53,6 +53,18 @@ export function isBusinessSlot(time: number, plan: ReturnType<typeof schedule>):
   return elapsed <= duration && elapsed % plan.interval === 0;
 }
 
+
+export function isCatalogWindow(time: number, plan: ReturnType<typeof schedule>): boolean {
+  const parts = CLOCK.formatToParts(new Date(time));
+  const minute = Number(parts.find(p => p.type === "hour")?.value) * 60 +
+    Number(parts.find(p => p.type === "minute")?.value);
+  const elapsed = (minute - plan.start + 1440) % 1440;
+  const duration = (plan.end - plan.start + 1440) % 1440;
+  // El workflow puede durar 20 minutos: debe terminar antes de la próxima franja.
+  const untilStart = (plan.start - minute + 1440) % 1440;
+  return elapsed > duration && untilStart > 20;
+}
+
 export function botConfig(env: Variables, forceDryRun = false): BotConfig {
   const config = Object.fromEntries(BOT_KEYS.map(key => [key, text(env, key,
     OPTIONAL_KEYS.includes(key))])) as BotConfig;
