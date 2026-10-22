@@ -145,6 +145,27 @@ def save_result(environ, code, log, truncated, config, values, request=request_j
         raise ValueError("result_request_failed")
 
 
+def report_preflight_failure(environ, error, request=request_json):
+    """Notifica un fallo previo al bot sin enviar credenciales ni detalles privados.
+
+    Se usa un JWT de GitHub fresco; si Cloudflare está caído, no bloquea ni
+    oculta el error original de la ejecución.
+    """
+    try:
+        token = obtain_identity(environ, request)
+        code = safe_code(error)
+        payload = json.dumps({
+            "request_id": environ["REQUEST_ID"],
+            "exit_code": 5,
+            "status": "error_inicio",
+            "log": "No se pudo iniciar el bot: fallo de validación privada (" + code + ").",
+            "log_truncated": False,
+        }, ensure_ascii=False).encode("utf-8")
+        stage_request(request, "result", RESULT_URL, token, payload)
+    except Exception:
+        pass
+
+
 def safe_code(error):
     code = str(error) if isinstance(error, ValueError) else "private_runtime_failed"
     return code if code in SAFE_ERRORS or re.fullmatch(r"(?:identity|credentials|result)_http_[1-5][0-9]{2}", code) else "private_runtime_failed"
@@ -154,6 +175,8 @@ def main(check_only=False):
     try:
         credentials, config, token = obtain_credentials(os.environ)
     except Exception as error:
+        if check_only:
+            report_preflight_failure(os.environ, error)
         print(f"::error::No se pudo validar el acceso privado de Cloudflare ({safe_code(error)}). El bot no se inició.", flush=True)
         return 4
     for value in [token, *credentials.values()]:
