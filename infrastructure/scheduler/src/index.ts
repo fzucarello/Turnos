@@ -1,4 +1,4 @@
-import { botConfig, fingerprint, isBusinessSlot, schedule, text } from "./config.ts";
+import { BOT_KEYS, botConfig, fingerprint, isBusinessSlot, schedule, text } from "./config.ts";
 import type { BotConfig } from "./config.ts";
 import { credentials } from "./credentials.ts";
 const ACTIVE = ["queued", "in_progress", "waiting", "pending", "requested"];
@@ -35,22 +35,43 @@ async function read(url: string, headers: HeadersInit): Promise<Response> {
 
 export async function dispatch(controller: Pick<ScheduledController, "cron" | "scheduledTime">, env: Env) {
   const { cron, scheduledTime } = controller;
-  const mode = String(env.MODE);
+  const workerMode = String(env.MODE);
+  const stored = await env.LEDGER.prepare(
+    "SELECT config_json,schedule_json,paused FROM control_config WHERE id=1"
+  ).first<{config_json:string;schedule_json:string;paused:number}>();
+  const manual = workerMode === "production"
+    ? await env.LEDGER.prepare(
+        "SELECT id,dry_run,config_json FROM manual_queue WHERE state='pending' ORDER BY created_at ASC LIMIT 1"
+      ).first<{id:string;dry_run:number;config_json:string}>()
+    : null;
+  const mode = manual ? "manual" : workerMode;
   const context = { cron, scheduled_at: new Date(scheduledTime).toISOString(), mode };
   log("cron_received", context);
-  if (mode === "paused") { log("paused", context); return; }
-  if (!["validate", "production"].includes(mode)) throw new Error("invalid_mode");
-  const plan = schedule(env);
+  if (mode === "paused" || (!manual && stored?.paused === 1)) { log("paused", context); return; }
+  if (!["validate", "production", "manual"].includes(mode)) throw new Error("invalid_mode");
+  const plan = schedule(stored ? {
+    SCHEDULE_START: JSON.parse(stored.schedule_json).start,
+    SCHEDULE_END: JSON.parse(stored.schedule_json).end,
+    INTERVAL_MINUTES: String(JSON.parse(stored.schedule_json).interval),
+  } : env);
   // El cron técnico sólo despierta cada minuto; los horarios efectivos vienen de Cloudflare.
   // Validate permite una prueba inmediata, incluso fuera de la franja, sin reservar.
-  if (cron !== "* * * * *" || (mode !== "validate" && !isBusinessSlot(scheduledTime, plan)) ||
+  if (cron !== "* * * * *" || (mode === "production" && !isBusinessSlot(scheduledTime, plan)) ||
       Date.now() - scheduledTime > 5 * 60000 || scheduledTime - Date.now() > 60000) {
     log("slot_ignored", context); return;
   }
   if (!env.GITHUB_TOKEN) throw new Error("missing_GITHUB_TOKEN");
   if (mode === "validate" && !/^[a-zA-Z0-9_-]{1,80}$/.test(text(env, "VALIDATION_ID"))) throw new Error("config_invalid_VALIDATION_ID");
   let config: BotConfig;
-  try { config = botConfig(env, mode === "validate"); }
+  try {
+    const legacy = Object.fromEntries(BOT_KEYS.map(k => [k, env[k as keyof Env]]));
+    legacy.OBJ_DOMICILIO_FLEXIBLE ??= "false";
+    legacy.OBJ_PROFESIONAL_FLEXIBLE ??= "false";
+    const source = manual ? JSON.parse(manual.config_json)
+      : stored ? JSON.parse(stored.config_json) : legacy;
+    if (manual) source.DRY_RUN = manual.dry_run === 1 ? "true" : "false";
+    config = botConfig(source, mode === "validate");
+  }
   catch (error) {
     const code = error instanceof Error && /^config_invalid_/.test(error.message) ? error.message : "config_invalid";
     log("config_error", { ...context, code }); throw new Error(code);
@@ -62,16 +83,28 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
 
   // Un INSERT atómico gana; los demás intentos del mismo slot no llaman a GitHub.
   // En validación todos los ticks usan una sola clave, por lo que la prueba ocurre una vez.
-  const slot = mode === "validate" ? `validation:${env.VALIDATION_ID}` : `cron:${Math.floor(scheduledTime / 60000)}`;
+  const slot = manual ? `manual:${manual.id}` : mode === "validate" ? `validation:${env.VALIDATION_ID}` : `cron:${Math.floor(scheduledTime / 60000)}`;
   const result = await env.LEDGER.prepare(
     "INSERT INTO dispatches(slot,scheduled_at,cron,mode,state,updated_at,config_sha256,request_id,config_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(slot) DO NOTHING",
   ).bind(slot, context.scheduled_at, cron, mode, "claimed", new Date().toISOString(), configSha256, requestId, configJson).run();
   if (result.meta.changes !== 1) { log("duplicate_skipped", { ...context, slot }); return; }
+  if (manual) await env.LEDGER.prepare(
+    "UPDATE manual_queue SET state='dispatching',updated_at=? WHERE id=? AND state='pending'"
+  ).bind(new Date().toISOString(),manual.id).run();
 
   let postStarted = false;
   async function record(state: string, status: number | null = null, runId: number | null = null) {
     await env.LEDGER.prepare("UPDATE dispatches SET state=?,http_status=?,run_id=?,updated_at=? WHERE slot=?")
       .bind(state, status, runId, new Date().toISOString(), slot).run();
+    if (manual) await env.LEDGER.prepare(
+      "UPDATE manual_queue SET state=?,updated_at=?,run_id=?,error_code=? WHERE id=?"
+    ).bind(
+      state === "busy_skipped" ? "busy"
+      : state === "accepted" ? "accepted"
+      : state === "rejected" ? "rejected"
+      : state === "uncertain" ? "uncertain" : "dispatching",
+      new Date().toISOString(),runId,state === "rejected" ? String(status) : null,manual.id
+    ).run();
     log(state, { ...context, slot, http_status: status, run_id: runId });
   }
   const owner = encodeURIComponent(env.GITHUB_OWNER);
@@ -85,7 +118,7 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
   try {
     // No habilitar producción mientras siga declarado el cron anterior en main.
     // El repositorio es público: esta lectura no recibe el token.
-    if (mode === "production") {
+    if (mode === "production" || mode === "manual") {
       const response = await read(`https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(env.GITHUB_REF)}/.github/workflows/${workflow}`, { "Cache-Control": "no-cache" });
       const config = await response.text(); // Archivo conocido y pequeño del repositorio configurado.
       if (/^\s+schedule\s*:/m.test(config)) throw new Error("github_schedule_still_present");
@@ -143,6 +176,9 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     // permiten identificar las interrupciones de proceso incluso si D1 falla.
     await env.LEDGER.prepare("UPDATE dispatches SET state=?,updated_at=? WHERE slot=? AND state IN ('claimed','sending')")
       .bind(postStarted ? "uncertain" : "preflight_failed", new Date().toISOString(), slot).run();
+    if (manual) await env.LEDGER.prepare(
+      "UPDATE manual_queue SET state=?,updated_at=?,error_code=? WHERE id=?"
+    ).bind(postStarted ? "uncertain" : "error",new Date().toISOString(),code,manual.id).run();
     throw new Error(code);
   }
 }
