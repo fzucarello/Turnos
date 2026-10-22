@@ -39,21 +39,24 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
   const stored = await env.LEDGER.prepare(
     "SELECT config_json,schedule_json,paused FROM control_config WHERE id=1"
   ).first<{config_json:string;schedule_json:string;paused:number}>();
+  const catalogPlan = schedule(stored ? {
+    SCHEDULE_START: JSON.parse(stored.schedule_json).start,
+    SCHEDULE_END: JSON.parse(stored.schedule_json).end,
+    INTERVAL_MINUTES: String(JSON.parse(stored.schedule_json).interval),
+  } : env);
+  // Prioridad: búsquedas manuales del usuario > búsquedas programadas > catálogo.
+  const allowCatalog = !isBusinessSlot(scheduledTime,catalogPlan);
   const manual = workerMode === "production"
     ? await env.LEDGER.prepare(
-        "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' ORDER BY created_at ASC LIMIT 1"
-      ).first<{id:string;dry_run:number;kind:string;config_json:string}>()
+        "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' AND (kind!='catalog_master' OR ?=1) ORDER BY CASE WHEN kind='catalog_master' THEN 1 ELSE 0 END,created_at LIMIT 1"
+      ).bind(allowCatalog?1:0).first<{id:string;dry_run:number;kind:string;config_json:string}>()
     : null;
   const mode = manual ? "manual" : workerMode;
   const context = { cron, scheduled_at: new Date(scheduledTime).toISOString(), mode };
   log("cron_received", context);
   if (mode === "paused" || (!manual && stored?.paused === 1)) { log("paused", context); return; }
   if (!["validate", "production", "manual"].includes(mode)) throw new Error("invalid_mode");
-  const plan = schedule(stored ? {
-    SCHEDULE_START: JSON.parse(stored.schedule_json).start,
-    SCHEDULE_END: JSON.parse(stored.schedule_json).end,
-    INTERVAL_MINUTES: String(JSON.parse(stored.schedule_json).interval),
-  } : env);
+  const plan = catalogPlan;
   // El cron técnico sólo despierta cada minuto; los horarios efectivos vienen de Cloudflare.
   // Validate permite una prueba inmediata, incluso fuera de la franja, sin reservar.
   if (cron !== "* * * * *" || (mode === "production" && !isBusinessSlot(scheduledTime, plan)) ||
@@ -71,7 +74,7 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
       : stored ? JSON.parse(stored.config_json) : legacy;
     source.OBJ_HORA_OBJETIVO ??= "";
     source.OBJ_HORARIOS_SEMANA ??= "";
-    source.OBJ_CATALOGO = manual?.kind === "catalog" ? "true" : "false";
+    source.OBJ_CATALOGO = (manual?.kind === "catalog" || manual?.kind === "catalog_master") ? "true" : "false";
     if (manual) source.DRY_RUN = manual.dry_run === 1 ? "true" : "false";
     config = botConfig(source, mode === "validate");
   }
@@ -86,7 +89,7 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
 
   // Un INSERT atómico gana; los demás intentos del mismo slot no llaman a GitHub.
   // En validación todos los ticks usan una sola clave, por lo que la prueba ocurre una vez.
-  const slot = manual ? `manual:${manual.id}` : mode === "validate" ? `validation:${env.VALIDATION_ID}` : `cron:${Math.floor(scheduledTime / 60000)}`;
+  const slot = manual ? (manual.kind==="catalog_master" ? `manual:${manual.id}:${Math.floor(scheduledTime/60000)}` : `manual:${manual.id}`) : mode === "validate" ? `validation:${env.VALIDATION_ID}` : `cron:${Math.floor(scheduledTime / 60000)}`;
   const result = await env.LEDGER.prepare(
     "INSERT INTO dispatches(slot,scheduled_at,cron,mode,state,updated_at,config_sha256,request_id,config_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(slot) DO NOTHING",
   ).bind(slot, context.scheduled_at, cron, mode, "claimed", new Date().toISOString(), configSha256, requestId, configJson).run();
@@ -102,7 +105,7 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     if (manual) await env.LEDGER.prepare(
       "UPDATE manual_queue SET state=?,updated_at=?,run_id=?,error_code=? WHERE id=?"
     ).bind(
-      state === "busy_skipped" ? "busy"
+      state === "busy_skipped" ? (manual.kind==="catalog_master"?"pending":"busy")
       : state === "accepted" ? "accepted"
       : state === "rejected" ? "rejected"
       : state === "uncertain" ? "uncertain" : "dispatching",
