@@ -72,6 +72,18 @@ async def browser_search(page, client, service, zone, department, timeout):
         return incoming && live && JSON.stringify(data(incoming))===JSON.stringify(data(live));
       }
     """, arg=html, timeout=timeout)
+    # Comparar además los pares que efectivamente muestra el paginado del
+    # navegador, incluyendo su tratamiento de texto oculto y saltos de línea.
+    await page.evaluate("""() => {
+      const pager=window.tblResultadoProfesionales;
+      if(pager && typeof pager.showall==='function')pager.showall();
+    }""")
+    visible_rows=await page.locator('#tblResultadoProfesionales tbody tr').evaluate_all("""
+      rows => rows.map(r=>Array.from(r.querySelectorAll(':scope > td')))
+        .filter(cells=>cells.length>=6).map(cells=>cells.map(c=>c.innerText))
+    """)
+    if records_from_rows(visible_rows) != records:
+        raise CatalogError('browser_result_mismatch')
     return records
 
 
