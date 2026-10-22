@@ -185,7 +185,7 @@ export async function credentials(request: Request, env: Env, keys: JWTVerifyGet
       }
       if(typeof accepted.slot==="string"&&accepted.slot.startsWith("manual:")){
         const id=accepted.slot.split(":")[1];
-        await env.LEDGER.prepare("UPDATE manual_queue SET state=?,updated_at=?,error_code=? WHERE id=? AND state='accepted'")
+        await env.LEDGER.prepare("UPDATE manual_queue SET catalog_status=?,updated_at=?,error_code=? WHERE id=? AND state='accepted'")
           .bind(body.status==="prueba_finalizada"&&(!isMaster||master)?"completed":"error",new Date().toISOString(),
             isMaster&&!master?"catalog_invalid_or_incomplete":null,id).run();
       }
