@@ -8,7 +8,8 @@ import { botConfig, fingerprint, isBusinessSlot, schedule } from '../src/config.
 const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url)));
 const fixture = Object.fromEntries(readFileSync(new URL('../.dev.vars.example', import.meta.url), 'utf8')
   .split(/\r?\n/).map(line => /^([A-Z_]+)="(.*)"$/.exec(line)).filter(Boolean).map(m => [m[1], m[2]]));
-const schema = ['0001_dispatches.sql', '0002_config_fingerprint.sql', '0003_private_runtime.sql'].map(name => readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8')).join('\n');
+const schema = ['0001_dispatches.sql', '0002_config_fingerprint.sql', '0003_private_runtime.sql','0003_control_panel.sql'].map(name => readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8')).join('\n');
+Object.assign(fixture,{OBJ_DOMICILIO_FLEXIBLE:"false",OBJ_PROFESIONAL_FLEXIBLE:"false"});
 const originalFetch = globalThis.fetch;
 const originalNow = Date.now;
 const time = Date.parse('2026-10-01T12:00:00Z');
@@ -21,10 +22,18 @@ function setup(mode = 'validate') {
   db.exec(schema);
   const LEDGER = {
     prepare(sql) {
-      return { bind(...params) { return { async run() {
-        const result = db.prepare(sql).run(...params);
-        return { meta: { changes: Number(result.changes) } };
-      } }; } };
+      return {
+        async first() { return db.prepare(sql).get() ?? null; },
+        bind(...params) {
+          return {
+            async first() { return db.prepare(sql).get(...params) ?? null; },
+            async run() {
+              const result = db.prepare(sql).run(...params);
+              return { meta: { changes: Number(result.changes) } };
+            }
+          };
+        }
+      };
     },
   };
   return { db, env: { ...fixture, MODE: mode, GITHUB_TOKEN: 'test-placeholder', LEDGER } };
@@ -213,4 +222,58 @@ test('no hay endpoint HTTP para disparar el bot', async () => {
   assert.equal((await worker.fetch(new Request('https://osep-scheduler.franchezuca.workers.dev/'), {})).status, 404);
   assert.equal(config.workers_dev, true);
   assert.equal(config.preview_urls, false);
+});
+
+
+test('configuración guardada en D1 controla el bot y permite pausar', async () => {
+  const { db, env } = setup('production');
+  const bot = botConfig(fixture);
+  bot.OBJ_SERVICIO = 'DERMATOLOGIA';
+  bot.OBJ_DOMICILIO = 'HUNUC HUAR';
+  bot.OBJ_DOMICILIO_FLEXIBLE = 'true';
+  db.prepare('INSERT INTO control_config(id,config_json,schedule_json,paused,revision,updated_at,updated_by) VALUES(1,?,?,0,1,?,?)')
+    .run(JSON.stringify(bot), JSON.stringify({start:'09:00',end:'17:00',interval:30}), new Date(time).toISOString(), 'test');
+  const posts = mockGitHub();
+  await dispatch(controller, env);
+  assert.equal(posts.length,1);
+  const snapshot = JSON.parse(db.prepare('SELECT config_json FROM dispatches').get().config_json);
+  assert.equal(snapshot.OBJ_SERVICIO, 'DERMATOLOGIA');
+  assert.equal(snapshot.OBJ_DOMICILIO_FLEXIBLE, 'true');
+
+  const {db: db2,env:env2}=setup('production');
+  db2.prepare('INSERT INTO control_config(id,config_json,schedule_json,paused,revision,updated_at,updated_by) VALUES(1,?,?,1,1,?,?)')
+    .run(JSON.stringify(bot), JSON.stringify({start:'09:00',end:'17:00',interval:30}), new Date(time).toISOString(), 'test');
+  await dispatch(controller, env2);
+  assert.equal(db2.prepare('SELECT count(*) AS n FROM dispatches').get().n,0);
+});
+
+test('búsqueda manual en cola: fuera de horario, DRY_RUN forzado e idempotencia', async () => {
+  const {db,env} = setup('production');
+  const id = 'e1234567-1234-4234-8234-123456789abc';
+  const bot = botConfig(fixture);
+  bot.DRY_RUN = 'false';
+  db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,state,config_json) VALUES(?,?,?,?,1,'pending',?)")
+    .run(id,new Date(time).toISOString(),new Date(time).toISOString(),'test',JSON.stringify(bot));
+  const posts = mockGitHub();
+  const outside = Date.parse('2026-10-01T06:12:00Z');
+  Date.now = () => outside;
+  await dispatch({...controller,scheduledTime:outside},env);
+  await dispatch({...controller,scheduledTime:outside},env);
+  assert.equal(posts.length,1);
+  assert.equal(posts[0].inputs.dry_run,'true');
+  assert.equal(db.prepare('SELECT state FROM manual_queue WHERE id=?').get(id).state,'accepted');
+  assert.equal(db.prepare('SELECT slot FROM dispatches').get().slot,'manual:'+id);
+});
+
+test('búsqueda manual NO se habilita si el Worker está en modo validación',async()=>{
+  const {db,env}=setup('validate');
+  const id='e1234567-1234-4234-8234-123456789abc';
+  const bot=botConfig(fixture);
+  db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,state,config_json) VALUES(?,?,?,?,0,'pending',?)")
+    .run(id,new Date(time).toISOString(),new Date(time).toISOString(),'test',JSON.stringify(bot));
+  const posts=mockGitHub();
+  await dispatch(controller,env);
+  assert.equal(posts.length,1);
+  assert.equal(posts[0].inputs.dry_run,'true');
+  assert.equal(db.prepare('SELECT state FROM manual_queue').get().state,'pending');
 });

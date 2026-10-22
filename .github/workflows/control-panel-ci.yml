@@ -1,0 +1,47 @@
+name: Verify OSEP control panel (sin reservas)
+on:
+  push:
+    branches: [feat/osep-private-control-panel]
+  pull_request:
+    paths:
+      - "app.py"
+      - "infrastructure/**"
+      - ".github/workflows/control-panel-ci.yml"
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Syntax Python (sin iniciar bot)
+        run: python -m compileall -q app.py infrastructure/scheduler/config_snapshot.py
+      - name: Tests Python sin reservas
+        run: python -m unittest discover -s infrastructure/scheduler/test -p "test_*.py"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Worker dependencies
+        working-directory: infrastructure/scheduler
+        run: npm ci
+      - name: TypeScript
+        working-directory: infrastructure/scheduler
+        run: npm run check
+      - name: Tests
+        working-directory: infrastructure/scheduler
+        run: npm test
+      - name: Build Worker sin desplegar
+        working-directory: infrastructure/scheduler
+        run: npm run build
+      - name: Compile and validate admin Worker
+        run: |
+          node infrastructure/admin/build.mjs
+          node --check infrastructure/admin/dist/worker.mjs
+      - name: Build panel Worker sin desplegar
+        working-directory: infrastructure/scheduler
+        run: npx wrangler deploy --config ../admin/wrangler.jsonc --dry-run --outdir ../admin/dist-check
+      - name: Security smoke test del panel
+        run: |
+          node --input-type=module -e "import w from './infrastructure/admin/dist/worker.mjs';const r=await w.fetch(new Request('https://osep-admin.franchezuca.workers.dev/api/state'),{});if(r.status!==403)process.exit(1);console.log('Acceso anónimo rechazado correctamente.');"

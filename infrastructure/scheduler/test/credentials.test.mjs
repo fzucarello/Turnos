@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { botConfig, fingerprint } from '../src/config.ts';
 const requestId = 'a1234567-1234-4234-8234-123456789abc';
 const fixture = Object.fromEntries(readFileSync(new URL('../.dev.vars.example', import.meta.url), 'utf8').split(/\r?\n/).map(line=>/^([A-Z_]+)="(.*)"$/.exec(line)).filter(Boolean).map(m=>[m[1],m[2]]));
+Object.assign(fixture,{ OBJ_DOMICILIO_FLEXIBLE:"false", OBJ_PROFESIONAL_FLEXIBLE:"false" });
 const configJson = JSON.stringify(botConfig(fixture));
 const hash = await fingerprint(configJson);
 const claims = {
