@@ -9,11 +9,11 @@ import sys
 BOT_KEYS = {
     "OBJ_SERVICIO", "OBJ_ZONA", "OBJ_DEPTO", "OBJ_MEDICO", "OBJ_PROFESIONAL",
     "OBJ_DOMICILIO", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP",
-    "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_HORA_FLEXIBLE",
+    "OBJ_FECHA_DESDE", "OBJ_EXCLUSIONES_SEMANA", "OBJ_HORA_MIN", "OBJ_HORA_MAX", "OBJ_HORA_PRIORIDAD", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_HORA_FLEXIBLE",
     "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "PORTAL_URL", "HEADLESS",
     "TIMEOUT_MS", "STOP_AFTER_LOGIN", "DRY_RUN", "OBJ_CATALOGO",
 }
-OPTIONAL = {"OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_CATALOGO"}
+OPTIONAL = {"OBJ_MEDICO", "OBJ_PROFESIONAL", "OBJ_DOMICILIO", "OBJ_HORARIO_TURNO", "OBJ_DIAS_VALIDOS", "OBJ_FECHA_DISP", "OBJ_HORA_OBJETIVO", "OBJ_HORARIOS_SEMANA", "OBJ_CATALOGO", "OBJ_FECHA_DESDE", "OBJ_EXCLUSIONES_SEMANA"}
 BOOLEANS = {"OBJ_HORA_FLEXIBLE", "OBJ_DOMICILIO_FLEXIBLE", "OBJ_PROFESIONAL_FLEXIBLE", "OBJ_DIA_FLEXIBLE", "OBJ_FECHA_FLEXIBLE", "HEADLESS", "STOP_AFTER_LOGIN", "DRY_RUN", "OBJ_CATALOGO"}
 
 
@@ -41,10 +41,12 @@ def validate_snapshot(raw, expected_hash, force_dry_run):
         config.setdefault("OBJ_HORA_OBJETIVO", "")
         config.setdefault("OBJ_HORARIOS_SEMANA", "")
         config.setdefault("OBJ_CATALOGO", "false")
+        config.setdefault("OBJ_FECHA_DESDE", "")
+        config.setdefault("OBJ_EXCLUSIONES_SEMANA", "")
     if not isinstance(config, dict) or set(config) != BOT_KEYS:
         raise ValueError("La configuración debe contener únicamente los parámetros autorizados del bot.")
     for key, value in config.items():
-        if not isinstance(value, str) or len(value) > 250 or re.search(r"[\x00-\x1f\x7f]", value):
+        if not isinstance(value, str) or len(value) > (2000 if key == "OBJ_EXCLUSIONES_SEMANA" else 250) or re.search(r"[\x00-\x1f\x7f]", value):
             raise ValueError(f"config_invalid_{key}")
         if not value.strip() and key not in OPTIONAL:
             raise ValueError(f"config_invalid_{key}")
@@ -69,6 +71,23 @@ def validate_snapshot(raw, expected_hash, force_dry_run):
                     raise ValueError("Invalid range")
         except (ValueError, TypeError, KeyError):
             raise ValueError("config_invalid_OBJ_HORARIOS_SEMANA") from None
+    if config["OBJ_FECHA_DESDE"]:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", config["OBJ_FECHA_DESDE"]):
+            raise ValueError("config_invalid_OBJ_FECHA_DESDE")
+        try:
+            datetime.date.fromisoformat(config["OBJ_FECHA_DESDE"])
+        except ValueError:
+            raise ValueError("config_invalid_OBJ_FECHA_DESDE") from None
+    from infrastructure.scheduler.availability_rules import weekly_rules
+    if config["OBJ_EXCLUSIONES_SEMANA"]:
+        if not config["OBJ_HORARIOS_SEMANA"]:
+            raise ValueError("config_invalid_OBJ_EXCLUSIONES_SEMANA")
+        try:
+            weekly_rules(config["OBJ_HORARIOS_SEMANA"], config["OBJ_EXCLUSIONES_SEMANA"],
+                         config["OBJ_HORA_MIN"] if config["OBJ_HORA_MIN"] != "false" else "00:00",
+                         config["OBJ_HORA_MAX"] if config["OBJ_HORA_MAX"] != "false" else "23:59")
+        except ValueError:
+            raise ValueError("config_invalid_OBJ_EXCLUSIONES_SEMANA") from None
     min_hour = 0 if config["OBJ_HORA_MIN"] == "false" else minute_of_day(config["OBJ_HORA_MIN"], "OBJ_HORA_MIN")
     max_hour = 1439 if config["OBJ_HORA_MAX"] == "false" else minute_of_day(config["OBJ_HORA_MAX"], "OBJ_HORA_MAX")
     if min_hour > max_hour:
