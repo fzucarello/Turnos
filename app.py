@@ -1487,6 +1487,33 @@ async def flujo_turnos_nuevo(page) -> int:
 
 
     # ========================================================
+    # Ventanas de hora por día de atención; sin configuración se conserva
+    # la selección histórica y sus filtros globales.
+    semana = None
+    raw_semana = os.getenv("OBJ_HORARIOS_SEMANA", "").strip()
+    if raw_semana:
+        try:
+            semana = __import__("json").loads(raw_semana)
+            if not isinstance(semana, list) or len(semana) != 7:
+                raise ValueError("calendario inválido")
+        except (ValueError, TypeError):
+            return terminar_error("La configuración semanal de horarios es inválida.")
+
+    def horario_para_dia(dia):
+        if semana is None:
+            return hmin, hmax
+        tokens = set(re.findall(r"[A-ZÁÉÍÓÚÜÑ]+", normalizar(dia)))
+        nombres = ("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO")
+        for i, nombre in enumerate(nombres):
+            if any(alias in tokens for alias in DAY_ALIASES[nombre]):
+                tramo = semana[i]
+                return None if tramo is None else (hora_a_minutos(tramo[0]), hora_a_minutos(tramo[1]))
+        return None
+
+    objetivo_hora = hora_a_minutos(os.getenv("OBJ_HORA_OBJETIVO", "").strip())
+    if prioridad == "CLOSEST" and objetivo_hora is None:
+        return terminar_error("Falta la hora preferida para la prioridad seleccionada.")
+
     # FILTRAR DÍAS REALES DE LA AGENDA
     # ========================================================
 
@@ -1552,7 +1579,8 @@ async def flujo_turnos_nuevo(page) -> int:
 
             if (
                 hm is not None
-                and hmin <= hm <= hmax
+                and horario_para_dia(dia) is not None
+                and horario_para_dia(dia)[0] <= hm <= horario_para_dia(dia)[1]
             ):
 
                 opciones_en_rango.append(
@@ -1583,6 +1611,13 @@ async def flujo_turnos_nuevo(page) -> int:
             elegido = max(
                 opciones_primer_dia,
                 key=lambda x: x[2]
+            )
+
+        elif prioridad == "CLOSEST":
+
+            elegido = min(
+                opciones_primer_dia,
+                key=lambda x: (abs(x[2] - objetivo_hora), x[2])
             )
 
         else:
@@ -1619,7 +1654,7 @@ async def flujo_turnos_nuevo(page) -> int:
 
                 hm = hora_a_minutos(h)
 
-                if hm is not None:
+                if hm is not None and (semana is None or horario_para_dia(dia) is not None or OBJ_DIA_FLEXIBLE):
 
                     opciones_flexibles.append(
                         (dia, h, hm)
@@ -1654,6 +1689,13 @@ async def flujo_turnos_nuevo(page) -> int:
             elegido = max(
                 opciones_primer_dia,
                 key=lambda x: x[2]
+            )
+
+        elif prioridad == "CLOSEST":
+
+            elegido = min(
+                opciones_primer_dia,
+                key=lambda x: (abs(x[2] - objetivo_hora), x[2])
             )
 
         else:
