@@ -13,3 +13,11 @@ CREATE TABLE IF NOT EXISTS osep_vault(
  updated_by TEXT NOT NULL
 );
 ALTER TABLE manual_queue ADD COLUMN kind TEXT NOT NULL DEFAULT 'appointment';
+
+CREATE TABLE IF NOT EXISTS osep_catalog_relations (
+ service TEXT NOT NULL, zone TEXT NOT NULL, department TEXT NOT NULL,
+ records_json TEXT NOT NULL, record_count INTEGER NOT NULL DEFAULT 0,
+ scan_status TEXT NOT NULL DEFAULT 'complete', updated_at TEXT NOT NULL,
+ PRIMARY KEY(service,zone,department)
+);
+CREATE INDEX IF NOT EXISTS ix_osep_catalog_relations_filter ON osep_catalog_relations(service,zone);
