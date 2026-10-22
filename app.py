@@ -1497,33 +1497,48 @@ async def flujo_turnos_nuevo(page) -> int:
 
 
     # ========================================================
-    # Ventanas de hora por día de atención; sin configuración se conserva
-    # la selección histórica y sus filtros globales.
-    semana = None
-    raw_semana = os.getenv("OBJ_HORARIOS_SEMANA", "").strip()
-    if raw_semana:
-        try:
-            semana = __import__("json").loads(raw_semana)
-            if not isinstance(semana, list) or len(semana) != 7:
-                raise ValueError("calendario inválido")
-        except (ValueError, TypeError):
-            return terminar_error("La configuración semanal de horarios es inválida.")
+    # Restricciones firmes: semana y exclusiones no se ignoran por flexibilidad.
+    semana_configurada = bool(os.getenv("OBJ_HORARIOS_SEMANA", "").strip())
+    try:
+        agenda_semanal = weekly_rules(
+            os.getenv("OBJ_HORARIOS_SEMANA", "").strip(),
+            os.getenv("OBJ_EXCLUSIONES_SEMANA", "").strip(),
+            hora_min,
+            hora_max
+        )
+    except ValueError as exc:
+        return terminar_error("Revisá la disponibilidad semanal: " + str(exc))
 
-    def horario_para_dia(dia):
-        if semana is None:
-            return hmin, hmax
+    def indice_dia_agenda(dia):
         tokens = set(re.findall(r"[A-ZÁÉÍÓÚÜÑ]+", normalizar(dia)))
         nombres = ("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO")
         for i, nombre in enumerate(nombres):
             if any(alias in tokens for alias in DAY_ALIASES[nombre]):
-                tramo = semana[i]
-                return None if tramo is None else (hora_a_minutos(tramo[0]), hora_a_minutos(tramo[1]))
+                return i
         return None
+
+    def cumple_disponibilidad(dia, minutos):
+        return can_attend(indice_dia_agenda(dia), minutos, agenda_semanal)
 
     objetivo_hora = hora_a_minutos(os.getenv("OBJ_HORA_OBJETIVO", "").strip())
     if prioridad == "CLOSEST" and objetivo_hora is None:
         return terminar_error("Falta la hora preferida para la prioridad seleccionada.")
 
+    def fecha_en_agenda(dia, referencia):
+        patron = re.search(r"(\d{1,2})[-/](\d{1,2})(?:[-/](\d{4}))?", normalizar(dia))
+        if not patron:
+            return None
+        numero, mes = int(patron[1]), int(patron[2])
+        anio = int(patron[3]) if patron[3] else referencia.year
+        try:
+            fecha = dt.date(anio, mes, numero)
+            if not patron[3] and fecha < referencia - dt.timedelta(days=31):
+                fecha = dt.date(anio + 1, mes, numero)
+            return fecha
+        except ValueError:
+            return None
+
+    # ========================================================
     # FILTRAR DÍAS REALES DE LA AGENDA
     # ========================================================
 
@@ -1589,8 +1604,7 @@ async def flujo_turnos_nuevo(page) -> int:
 
             if (
                 hm is not None
-                and horario_para_dia(dia) is not None
-                and horario_para_dia(dia)[0] <= hm <= horario_para_dia(dia)[1]
+                and cumple_disponibilidad(dia, hm)
             ):
 
                 opciones_en_rango.append(
@@ -1654,7 +1668,13 @@ async def flujo_turnos_nuevo(page) -> int:
             )
 
 
-        # Si es flexible, aceptar cualquier hora.
+        # Un día desactivado o una exclusión nunca se relaja.
+        if semana_configurada or os.getenv("OBJ_EXCLUSIONES_SEMANA", "").strip():
+            return terminar_sin_turno(
+                "No hay horas dentro de la disponibilidad semanal autorizada."
+            )
+
+        # La flexibilidad antigua rige sólo en perfiles sin semana definida.
         opciones_flexibles = []
 
 
@@ -1664,7 +1684,7 @@ async def flujo_turnos_nuevo(page) -> int:
 
                 hm = hora_a_minutos(h)
 
-                if hm is not None and (semana is None or horario_para_dia(dia) is not None or OBJ_DIA_FLEXIBLE):
+                if hm is not None:
 
                     opciones_flexibles.append(
                         (dia, h, hm)
@@ -1726,6 +1746,13 @@ async def flujo_turnos_nuevo(page) -> int:
             f"{hora_elegida}."
         )
 
+
+    if fecha_minima:
+        fecha_real = fecha_en_agenda(dia_valido, candidatas_con_fecha[0][0].date())
+        if fecha_real is None:
+            return terminar_sin_turno("No se pudo confirmar la fecha de la agenda con certeza.")
+        if fecha_real < fecha_minima:
+            return terminar_sin_turno("La fecha del turno es anterior a tu fecha mínima.")
 
     log.info(
         f"Día elegido: {dia_valido} / "
