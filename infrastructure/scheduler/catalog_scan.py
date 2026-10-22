@@ -4,6 +4,8 @@ Recorre el mismo login y selectores ya utilizados por app.py.
 Solo obtiene opciones para la especialidad, zona y departamento seleccionados.
 """
 import asyncio
+import base64
+import zlib
 import json
 import logging
 import os
@@ -51,6 +53,54 @@ async def main():
             await pick(page, "#servimod", selected_service)
             zones = [z for z in await options(page, "#id_zona") if not z.upper().startswith(("SELECCIONAR","SELECCIONE"))]
             selected_zone = os.environ["OBJ_ZONA"].strip()
+            if selected_zone == "*" and os.getenv("OBJ_DEPTO") == "*":
+                results = {"scope":"master","service":selected_service,"services":services,
+                           "zones":zones,"departmentsByZone":{},"entries":[],"errors":[]}
+                for zone in zones[:20]:
+                    try:
+                        await pick(page, "#id_zona", zone)
+                        departments = await options(page, "#id_dpto")
+                        results["departmentsByZone"][zone] = departments
+                    except Exception:
+                        results["errors"].append([zone,""])
+                        continue
+                    for dept in departments[:50]:
+                        try:
+                            await pick(page, "#id_dpto", dept)
+                            await page.locator("input#buscar").first.click(timeout=TOUT)
+                            await page.wait_for_timeout(900)
+                            table=page.locator("#tblResultadoProfesionales")
+                            await table.wait_for(timeout=5000)
+                            rows=await table.locator("tbody tr").evaluate_all("""
+                              rows => rows.slice(0,500).map(row=>{
+                                const td=[...row.querySelectorAll(':scope > td')];
+                                return [(td[0]?.innerText||'').trim(),(td[1]?.innerText||'').trim()];
+                              })
+                            """)
+                            records=[]
+                            for doctor,raw_center in rows:
+                                doctor=re.sub(r"^\\d+\\s+","",doctor).strip()
+                                parts=[part.strip() for part in raw_center.splitlines() if part.strip()]
+                                if not doctor or not parts:continue
+                                if any("OSEP HUNUC HUAR" in part.upper() for part in parts):
+                                    center="OSEP HUNUC HUAR"
+                                elif parts[0].upper().startswith(doctor.upper()):
+                                    center=parts[1] if len(parts)>1 else ""
+                                else:
+                                    center=parts[0]
+                                if center:
+                                    records.append([doctor[:140],center[:140]])
+                            results["entries"].append([zone,dept,list(map(list,dict.fromkeys(tuple(v) for v in records)))])
+                        except Exception:
+                            results["errors"].append([zone,dept])
+                        await page.wait_for_timeout(400)
+                packed=base64.b64encode(zlib.compress(json.dumps(
+                    results,ensure_ascii=False,separators=(",",":")).encode("utf-8"),9)).decode("ascii")
+                if len(packed)>26000:
+                    print("Catálogo demasiado grande para el registro privado.",flush=True)
+                    return 3
+                print("OSEP_CATALOG_PACK="+packed,flush=True)
+                return 0
             departments_by_zone = {}
             # Obtener los departamentos de cada zona de la especialidad, sin
             # buscar médicos ni abrir agendas. Máximo 20 zonas por seguridad.
