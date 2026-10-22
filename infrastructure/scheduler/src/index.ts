@@ -77,6 +77,8 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     legacy.OBJ_PROFESIONAL_FLEXIBLE ??= "false";
     const source = manual ? JSON.parse(manual.config_json)
       : stored ? JSON.parse(stored.config_json) : legacy;
+    source.OBJ_FECHA_DESDE ??= "";
+    source.OBJ_EXCLUSIONES_SEMANA ??= "";
     source.OBJ_HORA_OBJETIVO ??= "";
     source.OBJ_HORARIOS_SEMANA ??= "";
     source.OBJ_CATALOGO = (manual?.kind === "catalog" || manual?.kind === "catalog_master") ? "true" : "false";
