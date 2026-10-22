@@ -1,5 +1,5 @@
 {
-  "$schema": "../scheduler/node_modules/wrangler/config-schema.json",
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "osep-admin",
   "main": "dist/worker.mjs",
   "account_id": "bf1a13a86a0c4508e22f959c8454e963",
