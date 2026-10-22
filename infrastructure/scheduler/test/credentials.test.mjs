@@ -53,7 +53,7 @@ test('firma válida + identidad autorizada + Run reciente entrega sólo los dos 
   assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store');
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), null);
   assert.deepEqual(await response.json(), { credentials: { OSEP_USER:e.value.OSEP_USER,OSEP_PASS:e.value.OSEP_PASS }, config_json:configJson,config_sha256:hash });
-  assert.equal(e.queries(), 1);
+  assert.equal(e.queries(), 2);
 });
 
 test('subject inmutable exige los mismos IDs y el mismo main', async () => {
