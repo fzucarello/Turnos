@@ -8,6 +8,8 @@ import asyncio
 import threading
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
+from infrastructure.scheduler.availability_rules import minimum_date, weekly_rules, can_attend
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
@@ -998,6 +1000,13 @@ async def flujo_turnos_nuevo(page) -> int:
     ).strip()
 
 
+    try:
+        fecha_minima = minimum_date(os.getenv("OBJ_FECHA_DESDE", "").strip())
+    except ValueError:
+        return terminar_error("Revisá la fecha mínima configurada.")
+    hoy_mendoza = datetime.now(ZoneInfo("America/Argentina/Mendoza")).date()
+    desde_admisible = max(hoy_mendoza, fecha_minima) if fecha_minima else hoy_mendoza
+
     def cumple_base(
         f,
         aplicar_dias=True,
@@ -1067,7 +1076,7 @@ async def flujo_turnos_nuevo(page) -> int:
     # profesional y sede obligatorios salvo autorización explícita.
     def tiene_fecha_util(f):
         fecha = parse_fecha_disp(f["disp"])
-        if not fecha or fecha.date() < datetime.now().date():
+        if not fecha or fecha.date() < desde_admisible:
             return False
         if (
             fecha_filtro and fecha_filtro.lower() != "false"
@@ -1131,7 +1140,7 @@ async def flujo_turnos_nuevo(page) -> int:
     # FILTRO DE FECHA
     # ========================================================
 
-    hoy = datetime.now().date()
+    hoy = desde_admisible
 
     candidatas_con_fecha = []
 
@@ -1480,7 +1489,8 @@ async def flujo_turnos_nuevo(page) -> int:
 
     if prioridad not in {
         "EARLIEST",
-        "LATEST"
+        "LATEST",
+        "CLOSEST"
     }:
 
         prioridad = "EARLIEST"
