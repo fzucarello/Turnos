@@ -62,6 +62,21 @@ class SnapshotTests(unittest.TestCase):
                     snapshot.validate_snapshot(*self.payload(), "false")
                 self.config[key] = original
 
+    def test_github_actions_script_directory_import(self):
+        # En producción: python infrastructure/scheduler/run_with_credentials.py
+        # En ese modo sys.path apunta a infrastructure/scheduler (no al repo).
+        raw, signature = self.payload()
+        code = (
+            "import config_snapshot,sys;"
+            "config_snapshot.validate_snapshot(sys.argv[1],sys.argv[2],'true')"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code, raw, signature],
+            cwd=str(ROOT), text=True, capture_output=True, timeout=15
+        )
+        self.assertEqual(proc.returncode, 0,
+                         "La validación debe poder importar availability_rules desde el directorio del runner")
+
     def test_validation_does_not_write_actions_files(self):
         raw, sha = self.payload()
         with tempfile.TemporaryDirectory() as temporary:
