@@ -1,5 +1,7 @@
 name: Verify OSEP bot and scheduler (sin reservas)
 on:
+  push:
+    branches: [feat/availability-exclusions-minimum-date]
   pull_request:
     paths:
       - "app.py"
