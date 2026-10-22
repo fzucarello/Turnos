@@ -1539,6 +1539,12 @@ async def flujo_turnos_nuevo(page) -> int:
             return None
 
     # ========================================================
+    def cumple_fecha_agenda(dia):
+        if fecha_minima is None:
+            return True
+        real = fecha_en_agenda(dia, candidatas_con_fecha[0][0].date())
+        return real is not None and real >= fecha_minima
+
     # FILTRAR DÍAS REALES DE LA AGENDA
     # ========================================================
 
@@ -1604,6 +1610,7 @@ async def flujo_turnos_nuevo(page) -> int:
 
             if (
                 hm is not None
+                and cumple_fecha_agenda(dia)
                 and cumple_disponibilidad(dia, hm)
             ):
 
@@ -1684,7 +1691,7 @@ async def flujo_turnos_nuevo(page) -> int:
 
                 hm = hora_a_minutos(h)
 
-                if hm is not None:
+                if hm is not None and cumple_fecha_agenda(dia):
 
                     opciones_flexibles.append(
                         (dia, h, hm)
