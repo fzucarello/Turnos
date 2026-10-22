@@ -53,6 +53,34 @@ class CredentialsTests(unittest.TestCase):
             self.assertEqual(module.main(),4);run.assert_not_called()
         self.assertNotIn('PRIVATE_DIAGNOSTIC',output.getvalue())
 
+    def test_private_preflight_failure_notifies_cloudflare_without_secrets(self):
+        calls = []
+        def send(url, token, data=None):
+            calls.append((url, data))
+            if data is None:
+                return {'value':'signed-placeholder'}
+            return {'ok':True}
+        module.report_preflight_failure(
+            self.environment(), ValueError('invalid_private_configuration'), send
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[-1][0], module.RESULT_URL)
+        payload = json.loads(calls[-1][1])
+        self.assertEqual(payload['exit_code'],5)
+        self.assertEqual(payload['status'],'error_inicio')
+        self.assertEqual(payload['request_id'],ID)
+        self.assertNotIn('OSEP_PASS',str(payload))
+        self.assertNotIn('signed-placeholder',str(payload))
+
+    def test_check_only_reports_preflight_issue_before_exiting(self):
+        with patch.object(module,'obtain_credentials',side_effect=ValueError('invalid_private_configuration')), \
+             patch.object(module,'report_preflight_failure') as callback, \
+             patch.object(module,'run_private_bot') as run, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(module.main(check_only=True),4)
+            self.assertEqual(callback.call_count,1)
+            run.assert_not_called()
+
     def test_child_cannot_write_actions_summary_outputs_or_access_identity(self):
         env={**self.environment(),'GITHUB_ENV':'private-env-file','GITHUB_STEP_SUMMARY':'private-summary-file','GITHUB_OUTPUT':'output-file','GITHUB_TOKEN':'token-placeholder','ACTIONS_RUNTIME_TOKEN':'runtime-placeholder'}
         child=module.private_child_environment(env,CONFIG,CREDS)
