@@ -94,7 +94,10 @@ def private_child_environment(environ, config, credentials):
 def run_private_bot(child_env):
     # Nunca heredar stdout/stderr: capturar también excepciones y comandos de Actions.
     # El catálogo navega en modo lectura; nunca ejecuta la reserva.
-    script = "infrastructure/scheduler/catalog_scan.py" if child_env.get("OBJ_CATALOGO") == "true" else "app.py"
+    if child_env.get("OBJ_CATALOGO") == "true" and child_env.get("OBJ_DEPTO") == "__TRAFFIC_PROBE__":
+        script = "infrastructure/scheduler/traffic_probe.py"
+    else:
+        script = "infrastructure/scheduler/catalog_scan.py" if child_env.get("OBJ_CATALOGO") == "true" else "app.py"
     with subprocess.Popen([sys.executable, "-u", script], env=child_env, stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT, start_new_session=os.name == "posix") as process:
         timed_out = threading.Event()
