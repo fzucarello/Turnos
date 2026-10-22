@@ -12,10 +12,14 @@ on:
         description: 'Identificador aleatorio enviado por Cloudflare; no ingresar criterios aquí'
         type: string
         required: true
+      catalog_compare:
+        description: 'Diagnóstico acotado de catálogo, sin reservas'
+        type: boolean
+        default: false
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: ${{ inputs.catalog_compare && 8 || 20 }}
     concurrency:
       group: osep-bot
       cancel-in-progress: false
@@ -59,3 +63,4 @@ jobs:
           REQUEST_ID: ${{ inputs.request_id }}
           FORCE_DRY_RUN: "${{ inputs.dry_run && 'true' || 'false' }}"
         run: python infrastructure/scheduler/run_with_credentials.py
+

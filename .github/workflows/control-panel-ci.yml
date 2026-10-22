@@ -19,7 +19,10 @@ jobs:
       - name: Python syntax (no run)
         run: python -m compileall -q app.py infrastructure/scheduler/config_snapshot.py
       - name: Python unit tests
-        run: python -m unittest discover -s infrastructure/scheduler/test -p "test_*.py"
+        run: |
+          python -m pip install -r requirements.txt
+          google-chrome --version
+          python -m unittest discover -s infrastructure/scheduler/test -p "test_*.py"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -32,3 +35,4 @@ jobs:
           npm run check
           npm test
           npm run build
+

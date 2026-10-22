@@ -1,4 +1,4 @@
-import { BOT_KEYS, botConfig, fingerprint, isBusinessSlot, isCatalogWindow, schedule, text } from "./config.ts";
+import { BOT_KEYS, botConfig, fingerprint, isBusinessSlot, isCatalogWindow, isComparisonWindow, schedule, text } from "./config.ts";
 import type { BotConfig } from "./config.ts";
 import { credentials } from "./credentials.ts";
 const ACTIVE = ["queued", "in_progress", "waiting", "pending", "requested"];
@@ -51,10 +51,11 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
   // Evitar consultas masivas continuas al portal externo.
   const allowCatalog=isCatalogWindow(scheduledTime,catalogPlan) &&
     (!lastCatalog?.last || Date.now()-Date.parse(lastCatalog.last)>=5*60000);
+  const allowComparison=isComparisonWindow(scheduledTime,catalogPlan);
   const manual = workerMode === "production"
     ? await env.LEDGER.prepare(
-        "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' AND (kind NOT IN ('catalog','catalog_master') OR ?=1) ORDER BY CASE WHEN kind IN ('catalog','catalog_master') THEN 1 ELSE 0 END,created_at LIMIT 1"
-      ).bind(allowCatalog?1:0).first<{id:string;dry_run:number;kind:string;config_json:string}>()
+        "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' AND (kind NOT IN ('catalog','catalog_master','catalog_compare') OR (kind='catalog_compare' AND ?=1) OR (kind IN ('catalog','catalog_master') AND ?=1)) ORDER BY CASE WHEN kind='appointment' THEN 0 WHEN kind='catalog_compare' THEN 1 ELSE 2 END,created_at LIMIT 1"
+      ).bind(allowComparison?1:0,allowCatalog?1:0).first<{id:string;dry_run:number;kind:string;config_json:string}>()
     : null;
   const mode = manual ? "manual" : workerMode;
   const context = { cron, scheduled_at: new Date(scheduledTime).toISOString(), mode };
@@ -81,8 +82,11 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     source.OBJ_EXCLUSIONES_SEMANA ??= "";
     source.OBJ_HORA_OBJETIVO ??= "";
     source.OBJ_HORARIOS_SEMANA ??= "";
-    source.OBJ_CATALOGO = (manual?.kind === "catalog" || manual?.kind === "catalog_master") ? "true" : "false";
-    if (manual) source.DRY_RUN = manual.dry_run === 1 ? "true" : "false";
+    source.OBJ_CATALOGO = (manual?.kind === "catalog" || manual?.kind === "catalog_master" || manual?.kind === "catalog_compare") ? "true" : "false";
+    if(manual?.kind==="catalog_compare"){
+      source.OBJ_ZONA="*"; source.OBJ_DEPTO="__CATALOG_COMPARE__";
+    }
+    if (manual) source.DRY_RUN = manual.kind==="catalog_compare" || manual.dry_run === 1 ? "true" : "false";
     config = botConfig(source, mode === "validate");
   }
   catch (error) {
@@ -153,7 +157,8 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     const response = await fetch(`${base}/dispatches`, {
       method: "POST", redirect: "manual", signal: AbortSignal.timeout(20000),
       headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ ref: env.GITHUB_REF, inputs: { dry_run: dryRun ? "true" : "false", request_id: requestId } }),
+      body: JSON.stringify({ ref: env.GITHUB_REF, inputs: { dry_run: dryRun ? "true" : "false", request_id: requestId,
+        ...(manual?.kind==="catalog_compare"?{catalog_compare:true}:{}) } }),
     });
     // La API actual devuelve 200 con ID; se admite también el antiguo 204.
     if (response.status === 200 || response.status === 204) {
@@ -201,3 +206,4 @@ export default {
   // El endpoint sólo entrega secretos a un Run autenticado; nunca dispara ni reserva.
   async fetch(request, env) { return credentials(request, env); },
 } satisfies ExportedHandler<Env>;
+
