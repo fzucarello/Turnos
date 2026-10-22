@@ -33,6 +33,11 @@ def validate_snapshot(raw, expected_hash, force_dry_run):
     if not re.fullmatch(r"[0-9a-f]{64}", expected_hash) or actual_hash != expected_hash:
         raise ValueError("La huella de configuración no coincide con el envío de Cloudflare.")
     config = json.loads(raw)
+    # Compatibilidad de transición: versiones previas del Worker no envían
+    # las dos banderas nuevas. El hash se valida sobre el snapshot ORIGINAL.
+    if isinstance(config, dict) and set(config).issubset(BOT_KEYS):
+        config.setdefault("OBJ_DOMICILIO_FLEXIBLE", "false")
+        config.setdefault("OBJ_PROFESIONAL_FLEXIBLE", "false")
     if not isinstance(config, dict) or set(config) != BOT_KEYS:
         raise ValueError("La configuración debe contener únicamente los parámetros autorizados del bot.")
     for key, value in config.items():
