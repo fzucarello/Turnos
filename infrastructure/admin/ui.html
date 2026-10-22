@@ -1,0 +1,117 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OSEP · Centro de control</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#162439;background:#f5f7fb;font-synthesis:none}
+*{box-sizing:border-box}body{margin:0}header.top{background:#13243d;color:#fff;padding:22px max(22px,calc((100vw - 1150px)/2));display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1{font-size:24px;margin:2px 0 6px;letter-spacing:-.6px}h2{font-size:19px;margin:0 0 14px}h3{font-size:15px;margin:20px 0 12px}.sub{color:#aabbd2;font-size:13px}.eyebrow{font-size:11px;font-weight:750;letter-spacing:.15em;color:#80c5e7;text-transform:uppercase}
+.shell{max-width:1150px;margin:26px auto;padding:0 18px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tabs button{border:1px solid #d5deeb;background:white;color:#42556f;border-radius:11px;padding:10px 17px;font-weight:650;cursor:pointer}.tabs button.active{background:#163e68;color:white}
+.panel{display:none}.panel.active{display:block}.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:23px;box-shadow:0 5px 24px rgba(17,39,67,.03);margin-bottom:18px}
+label{display:block;font-size:13px;font-weight:650;color:#2e415a;margin:12px 0 6px}input,select{border:1px solid #cad6e4;border-radius:9px;background:#fff;padding:10px 11px;font:inherit;width:100%;font-size:14px;color:#182b46;outline-color:#1e789d}input[type=checkbox]{width:auto;accent-color:#17619a;margin:0 7px 0 0}
+small,.hint{font-size:12px;color:#687a91;line-height:1.5}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.days{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.days label{background:#f3f7fa;border:1px solid #dce4ec;padding:9px 11px;border-radius:10px;font-size:12px;margin:0}
+.check{display:flex;align-items:center;font-weight:500;gap:3px}.divider{border:none;border-top:1px solid #edf1f5;margin:20px 0}
+.actions{display:flex;gap:11px;flex-wrap:wrap;align-items:center}.btn{background:#19568e;color:white;border:none;border-radius:9px;padding:12px 18px;cursor:pointer;font-weight:700;font-size:14px}.btn.alt{background:#eef4f9;color:#254662}.btn.danger{background:#e1ebf2;color:#264e72}.btn:disabled{opacity:.45;cursor:not-allowed}
+.stamp{font-size:13px;color:#5a708b}.pill{display:inline-block;border-radius:999px;font-size:12px;font-weight:750;padding:5px 10px;background:#eef2f8;color:#526578}.pill.ok{background:#e2f4e9;color:#17653c}.pill.warn{background:#fff2d7;color:#8b5c12}.pill.error{background:#ffe7e3;color:#a7342c}
+.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:11px 9px;text-align:left;border-bottom:1px solid #edf0f4;vertical-align:top}th{background:#f8fafc;color:#53677f}a{color:#2165a2}code{font-size:12px;background:#edf2f7;border-radius:4px;padding:2px 5px}
+pre{max-height:300px;white-space:pre-wrap;word-break:break-word;background:#102237;border-radius:10px;color:#e6efff;padding:16px;line-height:1.6;overflow:auto;font-size:12px}details{margin:5px 0}summary{cursor:pointer;color:#235e92}
+.notice{padding:13px 15px;border:1px solid #c9e0ef;background:#f0f8fe;border-radius:12px;color:#315876;margin-bottom:16px;font-size:13px}
+.flash{padding:12px 15px;border-radius:10px;background:#e4f5ea;color:#16633c;margin:0 0 15px;display:none}.flash.error{background:#ffe7e4;color:#9f3129}
+@media(max-width:800px){.two,.row{grid-template-columns:1fr}.card{padding:17px}.shell{padding:0 12px}}
+</style></head>
+<body><header class="top"><div><div class="eyebrow">OSEP Mendoza · administración privada</div><h1>Centro de control</h1><div class="sub">Búsqueda de turnos · Cloudflare + GitHub · hora de Mendoza</div></div><div><span class="pill ok" id="badgeMode">Acceso privado</span></div></header>
+<main class="shell"><div id="flash" class="flash" role="status"></div>
+<nav class="tabs" aria-label="Secciones"><button type="button" class="active" data-tab="search">Búsqueda</button><button type="button" data-tab="scheduler">Programación</button><button type="button" data-tab="runs">Ejecuciones</button><button type="button" data-tab="secrets">Seguridad</button></nav>
+<section id="search" class="panel active">
+<div class="notice">Los criterios guardados se aplican a las nuevas ejecuciones; las reservas ya realizadas no cambian. Una búsqueda manual de prueba <strong>nunca confirma un turno</strong>.</div>
+<div class="two"><div class="card"><h2>Especialidad y ubicación</h2>
+<label for="service">Especialidad (obligatoria)</label><input id="service" list="services" autocomplete="off"><datalist id="services"><option>GINECOLOGIA</option><option>DERMATOLOGIA</option><option>CLINICA MEDICA</option><option>CARDIOLOGIA</option><option>PEDIATRIA</option></datalist><div class="hint">Sugerencias orientativas; también podés ingresar el texto exacto del portal OSEP.</div>
+<div class="row"><div><label for="zone">Zona</label><input id="zone" list="zones" autocomplete="off"><datalist id="zones"><option>GRAN MENDOZA</option></datalist></div><div><label for="department">Departamento</label><input id="department" list="departments" autocomplete="off"><datalist id="departments"><option>CAPITAL</option><option>GODOY CRUZ</option><option>GUAYMALLEN</option><option>LAS HERAS</option><option>LUJAN DE CUYO</option><option>MAIPU</option></datalist></div></div>
+<label for="center">Centro / domicilio de atención</label><input id="center" placeholder="Ej.: HUNUC HUAR" autocomplete="off"><label for="centerMode">Cómo aplicar el centro</label><select id="centerMode"><option value="required">Solo este centro</option><option value="preferred">Preferido; permitir otros si no hay turno</option><option value="any">Cualquier centro</option></select><div class="hint">OSEP muestra el nombre del centro dentro de «Domicilio de atención». Se compara el texto completo de esa columna.</div>
+<hr class="divider"><h3>Profesional</h3><label for="doctor">Nombre de profesional</label><input id="doctor" placeholder="Dejar vacío: cualquiera"><label for="doctorMode">Cómo aplicar el profesional</label><select id="doctorMode"><option value="required">Solo ese profesional</option><option value="preferred">Preferido; permitir otros</option><option value="any">Cualquier profesional</option></select>
+</div><div class="card"><h2>Fecha y horario</h2>
+<label for="date">Fecha deseada</label><input id="date" type="date"><label class="check"><input type="checkbox" id="dateFlex">Aceptar otra fecha si no existe la preferida</label>
+<h3>Días de la semana</h3><div class="days" id="days"><label><input type="checkbox" value="LUNES"> Lun</label><label><input type="checkbox" value="MARTES"> Mar</label><label><input type="checkbox" value="MIERCOLES"> Mié</label><label><input type="checkbox" value="JUEVES"> Jue</label><label><input type="checkbox" value="VIERNES"> Vie</label><label><input type="checkbox" value="SABADO"> Sáb</label><label><input type="checkbox" value="DOMINGO"> Dom</label></div><label class="check"><input type="checkbox" id="dayFlex">Aceptar otros días si no existe uno preferido</label>
+<div class="row"><div><label for="hourMin">Desde</label><input id="hourMin" type="time" step="60"></div><div><label for="hourMax">Hasta</label><input id="hourMax" type="time" step="60"></div></div><label class="check"><input type="checkbox" id="hourFlex">Aceptar horario fuera de la franja si no hay disponibilidad</label>
+<label for="priority">Prioridad de selección</label><select id="priority"><option value="EARLIEST">Primero disponible</option><option value="LATEST">Último disponible</option></select>
+<details><summary>Filtros avanzados</summary><label for="portalDoctor">Texto del buscador de profesionales de OSEP</label><input id="portalDoctor" placeholder="false"><div class="hint">Puede restringir la búsqueda antes de listar turnos. Dejar «false» si querés un profesional preferido y alternativas.</div><label for="horText">Texto de horario de atención</label><input id="horText" placeholder="Sin filtro"></details></div></div>
+<div class="card"><div class="actions"><button class="btn" id="saveSearch">Guardar configuración</button><button class="btn alt" id="testNow">Probar sin reservar</button><button class="btn danger" id="bookNow">Buscar y reservar ahora</button><span class="stamp" id="savedAt"></span></div><p class="hint">Para ejecutar manualmente se utiliza la última configuración <strong>guardada</strong>. El botón de reserva real exige una confirmación adicional.</p></div>
+</section>
+<section id="scheduler" class="panel"><div class="card"><h2>Programación automática</h2><div class="notice">Horarios en <b>America/Argentina/Mendoza</b>. Cloudflare despierta una vez por minuto y el sistema solo inicia las ejecuciones dentro de la ventana definida.</div>
+<div class="row"><div><label for="start">Comenzar</label><input id="start" type="time" step="60"></div><div><label for="end">Terminar (puede cruzar medianoche)</label><input id="end" type="time" step="60"></div></div>
+<label for="interval">Cada cuántos minutos</label><input id="interval" type="number" min="1" max="1440" step="1"><label class="check"><input id="paused" type="checkbox">Pausar búsquedas programadas (las manuales siguen disponibles)</label><hr class="divider">
+<div class="actions"><button class="btn" id="saveSchedule">Guardar programación</button><span class="stamp" id="scheduleStamp"></span></div></div></section>
+<section id="runs" class="panel"><div class="card"><div class="actions" style="justify-content:space-between"><h2>Últimas ejecuciones</h2><button class="btn alt" id="refresh">Actualizar</button></div><div class="tablewrap"><table><thead><tr><th>Fecha y hora</th><th>Estado</th><th>GitHub</th><th>Detalle privado</th></tr></thead><tbody id="runRows"></tbody></table></div></div><div class="card"><h2>Búsquedas manuales</h2><div class="tablewrap"><table><thead><tr><th>Solicitada</th><th>Tipo</th><th>Estado</th><th>Run</th></tr></thead><tbody id="manualRows"></tbody></table></div></div></section>
+<section id="secrets" class="panel"><div class="card"><h2>Acceso y credenciales</h2><p>La aplicación está protegida con <strong>Cloudflare Access</strong>, y comprueba adicionalmente la firma del token y el correo autorizado. Los secretos no se guardan en D1 ni se muestran en esta página.</p><h3>Credenciales actuales</h3><p><code>OSEP_USER</code> · <code>OSEP_PASS</code> · <code>GITHUB_TOKEN</code></p><p>Para sustituirlos de manera segura, abrí el dashboard de Cloudflare, elegí <strong>Workers &amp; Pages → osep-scheduler → Settings → Variables and Secrets</strong>. Pegá el valor nuevo como <strong>Secret</strong>, sin copiarlo al repositorio ni al chat.</p><p><a class="btn" style="display:inline-block;text-decoration:none" target="_blank" rel="noopener" href="https://dash.cloudflare.com/?to=/:account/workers-and-pages">Abrir Cloudflare</a></p><p class="hint">Las credenciales no pueden recuperarse en texto claro. El recambio se hace en el almacén cifrado de Cloudflare, con control de acceso administrativo.</p></div></section>
+</main>
+<script>
+(function(){
+"use strict";
+var data=null;
+function by(id){return document.getElementById(id);}
+function msg(t,error){var el=by("flash");el.style.display="block";el.textContent=t;el.className="flash"+(error?" error":"");window.scrollTo({top:0,behavior:"smooth"});}
+function fmt(d){if(!d)return "—";try{return new Intl.DateTimeFormat("es-AR",{timeZone:"America/Argentina/Mendoza",dateStyle:"short",timeStyle:"short"}).format(new Date(d));}catch{return d;}}
+function input(id,v){by(id).value=v||"";}
+function check(id,v){by(id).checked=v===true||v==="true";}
+function dateToForm(v){if(!v||v==="false")return "";var m=/^(\d{2})-(\d{2})-(\d{4})$/.exec(v);return m?m[3]+"-"+m[2]+"-"+m[1]:"";}
+function dateToBot(v){if(!v)return "";var p=v.split("-");return p[2]+"-"+p[1]+"-"+p[0];}
+function loadForm(c){var b=c.bot,s=c.schedule;
+input("service",b.OBJ_SERVICIO);input("zone",b.OBJ_ZONA);input("department",b.OBJ_DEPTO);
+input("center",b.OBJ_DOMICILIO==="false"?"":b.OBJ_DOMICILIO);
+input("centerMode",!b.OBJ_DOMICILIO||b.OBJ_DOMICILIO==="false"?"any":b.OBJ_DOMICILIO_FLEXIBLE==="true"?"preferred":"required");
+input("doctor",b.OBJ_PROFESIONAL==="false"?"":b.OBJ_PROFESIONAL);
+input("doctorMode",!b.OBJ_PROFESIONAL||b.OBJ_PROFESIONAL==="false"?"any":b.OBJ_PROFESIONAL_FLEXIBLE==="true"?"preferred":"required");
+input("date",dateToForm(b.OBJ_FECHA_DISP));check("dateFlex",b.OBJ_FECHA_FLEXIBLE);
+by("days").querySelectorAll("input").forEach(function(el){el.checked=(b.OBJ_DIAS_VALIDOS||"").split(",").includes(el.value);});
+check("dayFlex",b.OBJ_DIA_FLEXIBLE);input("hourMin",b.OBJ_HORA_MIN==="false"?"":b.OBJ_HORA_MIN.padStart(5,"0"));
+input("hourMax",b.OBJ_HORA_MAX==="false"?"":b.OBJ_HORA_MAX.padStart(5,"0"));
+check("hourFlex",b.OBJ_HORA_FLEXIBLE);input("priority",b.OBJ_HORA_PRIORIDAD);
+input("portalDoctor",b.OBJ_MEDICO);input("horText",b.OBJ_HORARIO_TURNO);
+input("start",s.start);input("end",s.end);input("interval",s.interval);check("paused",c.paused);
+}
+function capture(){var c=JSON.parse(JSON.stringify(data.config)),b=c.bot;
+b.OBJ_SERVICIO=by("service").value.trim().toUpperCase();b.OBJ_ZONA=by("zone").value.trim().toUpperCase();
+b.OBJ_DEPTO=by("department").value.trim().toUpperCase();
+b.OBJ_DOMICILIO=by("centerMode").value==="any"?"":by("center").value.trim().toUpperCase();
+b.OBJ_DOMICILIO_FLEXIBLE=String(by("centerMode").value==="preferred");
+b.OBJ_PROFESIONAL=by("doctorMode").value==="any"?"":by("doctor").value.trim().toUpperCase();
+b.OBJ_PROFESIONAL_FLEXIBLE=String(by("doctorMode").value==="preferred");
+b.OBJ_FECHA_DISP=dateToBot(by("date").value);
+b.OBJ_FECHA_FLEXIBLE=String(by("dateFlex").checked);
+b.OBJ_DIAS_VALIDOS=Array.from(by("days").querySelectorAll("input:checked")).map(function(el){return el.value;}).join(",");
+b.OBJ_DIA_FLEXIBLE=String(by("dayFlex").checked);
+b.OBJ_HORA_MIN=by("hourMin").value||"false";b.OBJ_HORA_MAX=by("hourMax").value||"false";
+b.OBJ_HORA_FLEXIBLE=String(by("hourFlex").checked);b.OBJ_HORA_PRIORIDAD=by("priority").value;
+b.OBJ_MEDICO=by("portalDoctor").value.trim()||"false";b.OBJ_HORARIO_TURNO=by("horText").value.trim();
+c.schedule={start:by("start").value,end:by("end").value,interval:Number(by("interval").value)};
+c.paused=by("paused").checked;return c;}
+async function api(path,method,body){var opts={method:method||"GET",credentials:"same-origin",headers:{"Accept":"application/json"}};
+if(method&&method!=="GET"){opts.headers["Content-Type"]="application/json";opts.headers["X-OSEP-CSRF"]="1";opts.body=JSON.stringify(body);}
+var response=await fetch(path,opts);var r=await response.json();if(!response.ok)throw Error(r.error||"Error del servidor");return r;}
+function badge(st){var p=document.createElement("span");p.className="pill "+(st==="turno_informado"?"ok":st==="sin_turno"||st==="prueba_finalizada"?"warn":st==="error_bot"||st==="timeout"||st==="error"?"error":"");p.textContent=({"turno_informado":"TURNO CONSEGUIDO","sin_turno":"SIN TURNO","prueba_finalizada":"PRUEBA OK","pending":"PENDIENTE","accepted":"ACEPTADO","busy":"OCUPADO","error_bot":"ERROR BOT","timeout":"TIMEOUT"}[st]||st||"—");return p;}
+function cell(tr,text){var el=document.createElement("td");el.textContent=text;tr.appendChild(el);return el;}
+function listTable(rows,id,manual){var dst=by(id);dst.textContent="";
+(rows||[]).forEach(function(r){var tr=document.createElement("tr");cell(tr,fmt(manual?r.created_at:r.scheduled_at));
+var td=document.createElement("td");td.appendChild(badge(manual?r.state:(r.bot_status||r.state)));tr.appendChild(td);
+if(manual){cell(tr,r.dry_run?"Prueba sin reservar":"Reserva real");var l=document.createElement("td");if(r.run_id){var a=document.createElement("a");a.href="https://github.com/fzucarello/Turnos/actions/runs/"+r.run_id;a.target="_blank";a.rel="noopener";a.textContent="#"+r.run_id;l.appendChild(a);}else{l.textContent=r.error_code||"—";}tr.appendChild(l);}
+else{var l=document.createElement("td");if(r.run_id){var a=document.createElement("a");a.href="https://github.com/fzucarello/Turnos/actions/runs/"+r.run_id;a.target="_blank";a.rel="noopener";a.textContent="#"+r.run_id;l.appendChild(a);}else{l.textContent="—";}tr.appendChild(l);
+var info=document.createElement("td"),det=document.createElement("details"),summary=document.createElement("summary"),pre=document.createElement("pre");
+summary.textContent="Ver log";pre.textContent=r.bot_log||"Todavía no hay diagnóstico disponible";det.appendChild(summary);det.appendChild(pre);info.appendChild(det);tr.appendChild(info);}
+dst.appendChild(tr);});
+if(!(rows||[]).length){var tr=document.createElement("tr");cell(tr,"No hay registros");dst.appendChild(tr);}}
+async function refresh(){try{data=await api("/api/state");if(data.config){loadForm(data.config);by("savedAt").textContent="Última modificación: "+fmt(data.updated_at);by("scheduleStamp").textContent=by("savedAt").textContent;by("badgeMode").textContent=data.config.paused?"Programación pausada":"Programación activa";by("badgeMode").className="pill "+(data.config.paused?"warn":"ok");}else{msg("No hay configuración inicial guardada. Contactá al administrador del Worker.",true);}
+listTable(data.runs,"runRows",false);listTable(data.manual,"manualRows",true);}
+catch(e){msg(e.message,true);}}
+async function save(){try{var config=capture();if(!config.bot.OBJ_SERVICIO||!config.bot.OBJ_ZONA||!config.bot.OBJ_DEPTO)throw Error("Completá especialidad, zona y departamento.");if(config.bot.OBJ_DOMICILIO_FLEXIBLE==="true"&&!config.bot.OBJ_DOMICILIO)throw Error("Elegí un centro para usarlo como preferido.");
+if(config.bot.OBJ_PROFESIONAL_FLEXIBLE==="true"&&!config.bot.OBJ_PROFESIONAL)throw Error("Elegí un profesional para usarlo como preferido.");
+if(config.bot.OBJ_PROFESIONAL_FLEXIBLE==="true"&&config.bot.OBJ_MEDICO.toLowerCase()!=="false")throw Error("Si el profesional es preferido, dejá el buscador avanzado en false para permitir alternativas.");
+await api("/api/config","PUT",{revision:data.revision,config:config});msg("Configuración guardada correctamente.");await refresh();}
+catch(e){msg(e.message,true);}}
+async function manual(dry){try{if(!dry){var c=prompt("Escribí RESERVAR para ejecutar una búsqueda real que puede confirmar un turno:");if(c!=="RESERVAR")return;}else if(!confirm("¿Ejecutar una prueba SIN confirmar reservas, usando la última configuración guardada?"))return;
+var result=await api("/api/manual","POST",{dry_run:dry});msg("Solicitud registrada: "+result.id+". "+result.detail);await refresh();}
+catch(e){msg(e.message,true);}}
+document.querySelectorAll("[data-tab]").forEach(function(el){el.addEventListener("click",function(){document.querySelectorAll("[data-tab]").forEach(function(x){x.classList.toggle("active",x===el);});document.querySelectorAll(".panel").forEach(function(x){x.classList.toggle("active",x.id===el.dataset.tab);});if(el.dataset.tab==="runs")refresh();});});
+by("saveSearch").addEventListener("click",save);by("saveSchedule").addEventListener("click",save);
+by("testNow").addEventListener("click",function(){manual(true);});by("bookNow").addEventListener("click",function(){manual(false);});by("refresh").addEventListener("click",refresh);
+refresh();
+})();
+</script></body></html>
