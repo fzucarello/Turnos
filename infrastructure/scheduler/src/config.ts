@@ -67,8 +67,8 @@ export function isCatalogWindow(time: number, plan: ReturnType<typeof schedule>)
 
 export function isComparisonWindow(time: number, plan: ReturnType<typeof schedule>): boolean {
   // Diagnóstico manual de dos consultas: sólo si no ocupa un slot programado
-  // y ningún slot puede llegar durante el máximo de 20 minutos del workflow.
-  for(let offset=0;offset<=20;offset++){
+  // y ningún slot puede llegar durante sus 8 minutos máximos más 2 de margen.
+  for(let offset=0;offset<=10;offset++){
     if(isBusinessSlot(time+offset*60000,plan))return false;
   }
   return true;

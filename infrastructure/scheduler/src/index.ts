@@ -157,7 +157,8 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     const response = await fetch(`${base}/dispatches`, {
       method: "POST", redirect: "manual", signal: AbortSignal.timeout(20000),
       headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ ref: env.GITHUB_REF, inputs: { dry_run: dryRun ? "true" : "false", request_id: requestId } }),
+      body: JSON.stringify({ ref: env.GITHUB_REF, inputs: { dry_run: dryRun ? "true" : "false", request_id: requestId,
+        ...(manual?.kind==="catalog_compare"?{catalog_compare:true}:{}) } }),
     });
     // La API actual devuelve 200 con ID; se admite también el antiguo 204.
     if (response.status === 200 || response.status === 204) {

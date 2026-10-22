@@ -9,7 +9,8 @@ test('diagnóstico manual no puede ocupar ni acercarse a una búsqueda real', ()
   const plan=schedule({SCHEDULE_START:'05:03',SCHEDULE_END:'01:03',INTERVAL_MINUTES:'30'});
   const at=hm=>Date.parse('2026-10-22T'+hm+':00-03:00');
   assert.equal(isComparisonWindow(at('20:33'),plan),false);
-  assert.equal(isComparisonWindow(at('20:43'),plan),false);
+  assert.equal(isComparisonWindow(at('20:53'),plan),false);
+  assert.equal(isComparisonWindow(at('20:52'),plan),true);
   assert.equal(isComparisonWindow(at('20:34'),plan),true);
   assert.equal(isComparisonWindow(at('05:02'),plan),false);
 });
@@ -309,6 +310,7 @@ test('catálogo pendiente espera toda la franja activa; diagnóstico fuerza el s
   assert.equal(snapshot.OBJ_CATALOGO,'true');
   assert.equal(snapshot.DRY_RUN,'true');
   assert.equal(snapshot.OBJ_DEPTO,'__CATALOG_COMPARE__');
+  assert.equal(posts[0].inputs.catalog_compare,true);
   assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='master'").get().state,'pending');
 });
 
