@@ -41,8 +41,8 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
   ).first<{config_json:string;schedule_json:string;paused:number}>();
   const manual = workerMode === "production"
     ? await env.LEDGER.prepare(
-        "SELECT id,dry_run,config_json FROM manual_queue WHERE state='pending' ORDER BY created_at ASC LIMIT 1"
-      ).first<{id:string;dry_run:number;config_json:string}>()
+        "SELECT id,dry_run,kind,config_json FROM manual_queue WHERE state='pending' ORDER BY created_at ASC LIMIT 1"
+      ).first<{id:string;dry_run:number;kind:string;config_json:string}>()
     : null;
   const mode = manual ? "manual" : workerMode;
   const context = { cron, scheduled_at: new Date(scheduledTime).toISOString(), mode };
@@ -69,6 +69,9 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     legacy.OBJ_PROFESIONAL_FLEXIBLE ??= "false";
     const source = manual ? JSON.parse(manual.config_json)
       : stored ? JSON.parse(stored.config_json) : legacy;
+    source.OBJ_HORA_OBJETIVO ??= "";
+    source.OBJ_HORARIOS_SEMANA ??= "";
+    source.OBJ_CATALOGO = manual?.kind === "catalog" ? "true" : "false";
     if (manual) source.DRY_RUN = manual.dry_run === 1 ? "true" : "false";
     config = botConfig(source, mode === "validate");
   }
