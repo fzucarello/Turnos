@@ -81,7 +81,7 @@ async def browser_search(page, client, service, zone, department, timeout):
       html => {
         const incoming=new DOMParser().parseFromString(html,'text/html').querySelector('#tblResultadoProfesionales');
         const live=document.querySelector('#tblResultadoProfesionales');
-        const data=t=>Array.from(t?.querySelectorAll('tbody tr')||[]).map(r=>Array.from(r.querySelectorAll(':scope > td')).map(c=>(c.textContent||'').replace(/\\s+/g,' ').trim()));
+        const data=t=>Array.from(t?.querySelectorAll('tbody tr')||[]).map(r=>Array.from(r.querySelectorAll(':scope > td')).map(c=>(c.textContent||'').replace(/\\s+/g,' ').trim())).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
         return incoming && live && JSON.stringify(data(incoming))===JSON.stringify(data(live));
       }
     """, arg=html, timeout=timeout)
