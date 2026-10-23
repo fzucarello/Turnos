@@ -318,12 +318,16 @@ async def checked_response(response, browser=False):
     if len(body) > MAX_BODY:
         raise CatalogError("body_limit")
     charset = re.search(r"charset=([\w-]+)", response.headers.get("content-type", ""), re.I)
-    try:
-        # CDP/Chrome devuelve el texto de BrowserResponse recodificado a UTF-8.
-        # APIResponse conserva los bytes de transporte y requiere su charset.
-        # Volver a aplicar ISO-8859-1 a BrowserResponse corrompe acentos y ñ.
-        return body.decode("utf-8" if browser else charset[1] if charset else "utf-8")
-    except (UnicodeError, LookupError):
-        raise CatalogError("invalid_response_encoding") from None
+    # CDP puede recodificar el texto de BrowserResponse a UTF-8. Algunas rutas
+    # conservan bytes originales; si no son UTF-8, usar su charset declarado.
+    # APIResponse siempre se interpreta con el charset del transporte.
+    declared=charset[1] if charset else 'utf-8'
+    encodings=['utf-8',declared] if browser else [declared]
+    for encoding in dict.fromkeys(encodings):
+        try:
+            return body.decode(encoding)
+        except (UnicodeError,LookupError):
+            pass
+    raise CatalogError('invalid_response_encoding') from None
 
 

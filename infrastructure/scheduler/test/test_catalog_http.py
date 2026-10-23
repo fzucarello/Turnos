@@ -99,6 +99,7 @@ class RequestTests(unittest.IsolatedAsyncioTestCase):
         expected=[('PROFESIONAL FICTICIO PEÑA','CENTRO FICTICIO')]
         self.assertEqual(parse_results(await checked_response(browser,browser=True)),expected)
         self.assertEqual(parse_results(await checked_response(direct)),expected)
+        self.assertEqual(parse_results(await checked_response(direct,browser=True)),expected)
 
     async def test_200_javascript_never_reads_stale_table(self):
         r=response("alert('error')",mime="text/javascript")
