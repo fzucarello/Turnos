@@ -134,6 +134,17 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(records),1)
         self.assertEqual(len(self.searches),1)
 
+    async def test_selected_controls_are_checked_independently_of_legacy_named_items(self):
+        await self.page.evaluate("""() => {
+          const elements=document.querySelector('#datosFiltroNuevoTurno').elements;
+          const original=elements.namedItem.bind(elements);
+          elements.namedItem=name=>['servimod','id_zona'].includes(name)?null:original(name);
+        }""")
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        records=await browser_search(self.page,client,'s','z1','d1',3000)
+        self.assertEqual(len(records),1)
+
     async def test_comparison_mode_covers_two_zones_without_partial_publication(self):
         with patch.object(SessionHTTP,"read",self.transport()):
             result,metrics=await scan(self.page,"SERVICIO","*","*",3000,True)
