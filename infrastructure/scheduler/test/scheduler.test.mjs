@@ -328,3 +328,34 @@ test('diagnóstico ocupado conserva la cola y puede reintentar en otro tick',asy
   assert.equal(db.prepare('SELECT state FROM manual_queue').get().state,'accepted');
 });
 
+
+test('catálogo: despachar siguiente después de un minuto sin la antigua pausa de cinco', async()=>{
+  const {db,env}=setup('production');
+  const bot=botConfig(fixture);
+  const plan=JSON.stringify({start:'17:00',end:'17:01',interval:30});
+  db.prepare('INSERT INTO control_config(id,config_json,schedule_json,paused,revision,updated_at,updated_by) VALUES(1,?,?,0,1,?,?)')
+    .run(JSON.stringify(bot),plan,new Date(time).toISOString(),'test');
+  db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,kind,state,catalog_status,config_json) VALUES('old',?,?,?,1,'catalog_master','accepted','completed',?)")
+    .run(new Date(time-180000).toISOString(),new Date(time-65000).toISOString(),'test',JSON.stringify(bot));
+  db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,kind,state,config_json) VALUES('next',?,?,?,1,'catalog_master','pending',?)")
+    .run(new Date(time-15000).toISOString(),new Date(time-15000).toISOString(),'test',JSON.stringify(bot));
+  const posts=mockGitHub();
+  await dispatch(controller,env);
+  assert.equal(posts.length,1);
+  assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='next'").get().state,'accepted');
+});
+
+test('catálogo: no superponer ejecuciones mientras hay una activa y reciente',async()=>{
+  const {db,env}=setup('production');
+  const bot=botConfig(fixture);
+  db.prepare('INSERT INTO control_config(id,config_json,schedule_json,paused,revision,updated_at,updated_by) VALUES(1,?,?,0,1,?,?)')
+    .run(JSON.stringify(bot),JSON.stringify({start:'17:00',end:'17:01',interval:30}),new Date(time).toISOString(),'test');
+  db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,kind,state,config_json) VALUES('active',?,?,?,1,'catalog_master','accepted',?)")
+    .run(new Date(time-90000).toISOString(),new Date(time-90000).toISOString(),'test',JSON.stringify(bot));
+  db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,kind,state,config_json) VALUES('next',?,?,?,1,'catalog_master','pending',?)")
+    .run(new Date(time-5000).toISOString(),new Date(time-5000).toISOString(),'test',JSON.stringify(bot));
+  const posts=mockGitHub();
+  await dispatch(controller,env);
+  assert.equal(posts.length,0);
+  assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='next'").get().state,'pending');
+});
