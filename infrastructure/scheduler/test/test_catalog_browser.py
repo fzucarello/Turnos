@@ -185,7 +185,7 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         client=SessionHTTP(self.page)
         await browser_departments(self.page,client,'z1',3000)
         with self.assertRaisesRegex(CatalogError,'browser_table_not_refreshed'):
-            await browser_search(self.page,client,'s','z1','d1',300)
+            await browser_search(self.page,client,'s','z1','d1',3000)
 
     async def test_selected_controls_are_checked_independently_of_legacy_named_items(self):
         await self.page.evaluate("""() => {

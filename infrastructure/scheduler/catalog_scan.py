@@ -96,7 +96,7 @@ async def browser_search(page, client, service, zone, department, timeout):
           const state={node:document.querySelector('#tblResultadoProfesionales'),changed:false};
           state.observer=new MutationObserver(changes=>{
             if(document.querySelector('#tblResultadoProfesionales')!==state.node ||
-              changes.some(m=>(m.target.nodeType===1?m.target:m.target.parentElement)?.closest('#tblResultadoProfesionales tbody')))
+              changes.some(m=>(m.target.nodeType===1?m.target:m.target.parentElement)?.closest('#tblResultadoProfesionales')))
               state.changed=true;
           });
           state.observer.observe(document.body,{subtree:true,childList:true,characterData:true});
