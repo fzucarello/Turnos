@@ -39,6 +39,16 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
   const stored = await env.LEDGER.prepare(
     "SELECT config_json,schedule_json,paused FROM control_config WHERE id=1"
   ).first<{config_json:string;schedule_json:string;paused:number}>();
+  // Reponer únicamente escaneos de catálogo sin resultado que quedaron huérfanos.
+  // GitHub limita el job a 20 min y el bot a 420 s: 30 min evita duplicar uno activo.
+  // Nunca reintentar automáticamente reservas, ni escaneos concluidos con error.
+  if(workerMode==="production" && stored?.paused!==1){
+    const staleThreshold=new Date(Date.now()-30*60000).toISOString();
+    const recovered=await env.LEDGER.prepare(
+      "UPDATE manual_queue SET state='pending',catalog_status=NULL,run_id=NULL,error_code=NULL,updated_at=? WHERE kind='catalog_master' AND catalog_status IS NULL AND state IN ('accepted','uncertain','dispatching') AND updated_at<?"
+    ).bind(new Date().toISOString(),staleThreshold).run();
+    if(recovered.meta.changes)log("catalog_orphan_requeued",{count:recovered.meta.changes});
+  }
   const catalogPlan = schedule(stored ? {
     SCHEDULE_START: JSON.parse(stored.schedule_json).start,
     SCHEDULE_END: JSON.parse(stored.schedule_json).end,
