@@ -23,7 +23,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.catalog_compare && 8 || 20 }}
+    timeout-minutes: ${{ inputs.catalog_compare && 4 || 20 }}
     concurrency:
       group: osep-bot
       cancel-in-progress: false

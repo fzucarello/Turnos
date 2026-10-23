@@ -12,7 +12,8 @@ from catalog_scan import scan, browser_departments, browser_search
 from test_catalog_http import html
 
 PAGE = """
-<form id="datosFiltroNuevoTurno">
+<form name="hiddenPrevious"><input type="button" id="buscar" style="display:none"></form>
+<form id="datosFiltroNuevoTurno" name="datosFiltroNuevoTurno">
 <select id="servimod" name="servimod"><option value="s">SERVICIO</option></select>
 <select id="id_zona" name="id_zona" onchange="departments()">
 <option value="">Seleccionar zona</option><option value="z1">ZONA UNO</option><option value="z2">ZONA DOS</option></select>
@@ -26,7 +27,7 @@ async function departments(){
  document.querySelector('#id_dpto').innerHTML=await r.text();
 }
 async function search(){
- const p=new URLSearchParams(new FormData(document.querySelector('form')));
+ const p=new URLSearchParams(new FormData(document.querySelector('#datosFiltroNuevoTurno')));
  p.set('buscar','Buscar');
  const r=await fetch('SEARCH_PATH',{method:'POST',body:p});
  if(r.headers.get('content-type')==='text/html')

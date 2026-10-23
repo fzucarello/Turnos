@@ -9,8 +9,8 @@ test('diagnóstico manual no puede ocupar ni acercarse a una búsqueda real', ()
   const plan=schedule({SCHEDULE_START:'05:03',SCHEDULE_END:'01:03',INTERVAL_MINUTES:'30'});
   const at=hm=>Date.parse('2026-10-22T'+hm+':00-03:00');
   assert.equal(isComparisonWindow(at('20:33'),plan),false);
-  assert.equal(isComparisonWindow(at('20:53'),plan),false);
-  assert.equal(isComparisonWindow(at('20:52'),plan),true);
+  assert.equal(isComparisonWindow(at('20:57'),plan),false);
+  assert.equal(isComparisonWindow(at('20:56'),plan),true);
   assert.equal(isComparisonWindow(at('20:34'),plan),true);
   assert.equal(isComparisonWindow(at('05:02'),plan),false);
 });
