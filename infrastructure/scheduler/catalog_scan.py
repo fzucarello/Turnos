@@ -10,7 +10,7 @@ import zlib
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
-from catalog_http import (CatalogError, SessionHTTP, SEARCH_PATH, DEPARTMENT_PATH,
+from catalog_http import (CatalogError, CatalogNoResults, SessionHTTP, SEARCH_PATH, DEPARTMENT_PATH,
                           checked_response, parse_options, parse_results, records_from_rows, mismatch_diagnostic)
 
 CURRENT_STAGE = "start"
@@ -110,7 +110,15 @@ async def browser_search(page, client, service, zone, department, timeout):
             await form.locator('input#buscar').click(timeout=timeout)
         phase('search_response')
     response = await received.value
-    html = await checked_response(response,browser=True)
+    try:
+        html = await checked_response(response,browser=True)
+    except CatalogNoResults:
+        # La respuesta del POST corresponde a estos filtros y niega explícitamente
+        # la existencia de agendas. No leer la tabla anterior del navegador.
+        await page.evaluate('() => window.__osepCatalogPending?.observer?.disconnect()')
+        client.remember_search(response.request)
+        phase('explicit_no_agendas')
+        return []
     records = parse_results(html)
     client.remember_search(response.request)
     # Contrastar también con la tabla que acaba de insertar la interfaz.
