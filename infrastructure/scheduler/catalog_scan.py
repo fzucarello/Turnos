@@ -153,7 +153,9 @@ async def browser_search(page, client, service, zone, department, timeout):
     rendered=records_from_rows(visible_rows)
     if rendered != records:
         raise CatalogError('browser_result_mismatch',{'response_records':len(records),'rendered_records':len(rendered),
-                                                   'intersection':len(set(records)&set(rendered))})
+                                                   'intersection':len(set(records)&set(rendered)),
+                                                   'matching_doctors':len({r[0] for r in records}&{r[0] for r in rendered}),
+                                                   'matching_centers':len({r[1] for r in records}&{r[1] for r in rendered})})
     return records
 
 
