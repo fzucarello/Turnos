@@ -55,6 +55,14 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
             path=urlsplit(request.url).path
             if path=="/":
                 body=PAGE
+                if self.latin1:
+                    body+='''<script>window.search=()=>{
+                      const x=new XMLHttpRequest();x.open('POST','SEARCH_PATH');
+                      x.setRequestHeader('Content-Type','application/x-www-form-urlencoded;charset=UTF-8');
+                      x.onload=()=>document.querySelector('#lista_profesionales').innerHTML=x.responseText;
+                      const p=new URLSearchParams(new FormData(document.querySelector('#datosFiltroNuevoTurno')));
+                      p.set('buscar','Buscar');x.send(p.toString());
+                    };</script>'''.replace('SEARCH_PATH',SEARCH_PATH)
                 if self.paginate_rows:
                     body='<style>.ocultar{display:none}</style>'+body.replace("document.querySelector('#lista_profesionales').innerHTML=await r.text();", "{document.querySelector('#lista_profesionales').innerHTML=await r.text();Array.from(document.querySelectorAll('#tblResultadoProfesionales tbody tr')).slice(20).forEach(r=>r.style.display='none');}")
                 if self.reuse_table:
@@ -178,6 +186,7 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_latin1_response_matches_browser_rendered_accents(self):
         self.latin1=True
+        await self.page.reload()
         client=SessionHTTP(self.page)
         await browser_departments(self.page,client,'z1',3000)
         records=await browser_search(self.page,client,'s','z1','d1',3000)
