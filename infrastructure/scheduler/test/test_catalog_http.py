@@ -91,6 +91,15 @@ class ParserTests(unittest.TestCase):
             request_fields(urlencode(base)+"&servimod=other")
 
 class RequestTests(unittest.IsolatedAsyncioTestCase):
+    async def test_browser_utf8_and_direct_latin1_bodies_decode_to_the_same_catalog(self):
+        body=html([['1 PROFESIONAL FICTICIO PEÑA','CENTRO FICTICIO','S','H','D','A']])
+        browser=response(body,mime='text/html; charset=ISO-8859-1')
+        direct=response(body,mime='text/html; charset=ISO-8859-1')
+        direct.body=AsyncMock(return_value=body.encode('iso-8859-1'))
+        expected=[('PROFESIONAL FICTICIO PEÑA','CENTRO FICTICIO')]
+        self.assertEqual(parse_results(await checked_response(browser,browser=True)),expected)
+        self.assertEqual(parse_results(await checked_response(direct)),expected)
+
     async def test_200_javascript_never_reads_stale_table(self):
         r=response("alert('error')",mime="text/javascript")
         with self.assertRaisesRegex(CatalogError,"unexpected_content_type"):

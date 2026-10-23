@@ -300,7 +300,7 @@ class SessionHTTP:
         return parse_options(await self.read(urlunsplit(p._replace(query=urlencode(query)))))
 
 
-async def checked_response(response):
+async def checked_response(response, browser=False):
     if response.status != 200:
         raise CatalogError("http_" + str(response.status))
     mime = response.headers.get("content-type", "").split(";")[0].lower().strip()
@@ -319,7 +319,10 @@ async def checked_response(response):
         raise CatalogError("body_limit")
     charset = re.search(r"charset=([\w-]+)", response.headers.get("content-type", ""), re.I)
     try:
-        return body.decode(charset[1] if charset else "utf-8")
+        # CDP/Chrome devuelve el texto de BrowserResponse recodificado a UTF-8.
+        # APIResponse conserva los bytes de transporte y requiere su charset.
+        # Volver a aplicar ISO-8859-1 a BrowserResponse corrompe acentos y ñ.
+        return body.decode("utf-8" if browser else charset[1] if charset else "utf-8")
     except (UnicodeError, LookupError):
         raise CatalogError("invalid_response_encoding") from None
 

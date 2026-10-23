@@ -45,7 +45,7 @@ async def browser_departments(page, client, zone, timeout):
     ) as received:
         await page.locator("#id_zona").select_option(value=zone, timeout=timeout)
     response = await received.value
-    pairs = parse_options(await checked_response(response))
+    pairs = parse_options(await checked_response(response,browser=True))
     client.department_url = response.request.url
     phase('department_dom')
     await page.wait_for_function("""
@@ -110,7 +110,7 @@ async def browser_search(page, client, service, zone, department, timeout):
             await form.locator('input#buscar').click(timeout=timeout)
         phase('search_response')
     response = await received.value
-    html = await checked_response(response)
+    html = await checked_response(response,browser=True)
     records = parse_results(html)
     client.remember_search(response.request)
     # Contrastar también con la tabla que acaba de insertar la interfaz.
