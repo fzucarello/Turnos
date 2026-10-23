@@ -13,6 +13,14 @@ from urllib.parse import parse_qsl, urlsplit
 from catalog_http import (CatalogError, SessionHTTP, SEARCH_PATH, DEPARTMENT_PATH,
                           checked_response, parse_options, parse_results, records_from_rows)
 
+CURRENT_STAGE = "start"
+
+def phase(code):
+    global CURRENT_STAGE
+    CURRENT_STAGE = code
+    if os.getenv('OBJ_DEPTO') == '__CATALOG_COMPARE__':
+        print('OSEP_CATALOG_PHASE='+code,flush=True)
+
 
 async def option_pairs(page, selector):
     return await page.locator(selector).evaluate("""
@@ -30,6 +38,7 @@ def choose(pairs, label):
 
 
 async def browser_departments(page, client, zone, timeout):
+    phase('department_response')
     async with page.expect_response(
         lambda r: urlsplit(r.url).path == DEPARTMENT_PATH and
         dict(parse_qsl(urlsplit(r.url).query)).get("id_zona") == zone, timeout=timeout
@@ -38,6 +47,7 @@ async def browser_departments(page, client, zone, timeout):
     response = await received.value
     pairs = parse_options(await checked_response(response))
     client.department_url = response.request.url
+    phase('department_dom')
     await page.wait_for_function("""
       expected => JSON.stringify(Array.from(document.querySelector('#id_dpto')?.options||[])
         .filter(o=>o.value&&!o.disabled&&!/^(seleccione|seleccionar)/i.test((o.textContent||'').trim()))
@@ -47,6 +57,7 @@ async def browser_departments(page, client, zone, timeout):
 
 
 async def browser_search(page, client, service, zone, department, timeout):
+    phase('search_controls')
     await page.locator("#servimod").select_option(value=service, timeout=timeout)
     await page.locator("#id_dpto").select_option(value=department, timeout=timeout)
     expected = {"servimod": service, "id_zona": zone, "id_dpto": department}
@@ -57,6 +68,7 @@ async def browser_search(page, client, service, zone, department, timeout):
         fields = dict(parse_qsl(request.post_data or "", keep_blank_values=True))
         return all(fields.get(k) == v for k, v in expected.items())
     # Sólo se espera una respuesta iniciada por este clic y con estos filtros.
+    phase('search_response')
     async with page.expect_response(matches, timeout=timeout) as received:
         await page.locator("input#buscar").first.click(timeout=timeout)
     response = await received.value
@@ -64,6 +76,7 @@ async def browser_search(page, client, service, zone, department, timeout):
     records = parse_results(html)
     client.remember_search(response.request)
     # Contrastar también con la tabla que acaba de insertar la interfaz.
+    phase('search_dom')
     await page.wait_for_function("""
       html => {
         const incoming=new DOMParser().parseFromString(html,'text/html').querySelector('#tblResultadoProfesionales');
@@ -78,6 +91,7 @@ async def browser_search(page, client, service, zone, department, timeout):
       const pager=window.tblResultadoProfesionales;
       if(pager && typeof pager.showall==='function')pager.showall();
     }""")
+    phase('rendered_records')
     visible_rows=await page.locator('#tblResultadoProfesionales tbody tr').evaluate_all("""
       rows => rows.map(r=>Array.from(r.querySelectorAll(':scope > td')))
         .filter(cells=>cells.length>=6).map(cells=>cells.map(c=>c.innerText))
@@ -125,6 +139,7 @@ async def scan(page, service_label, zone_label, department_label, timeout, compa
                 metrics["browser_ms"] += round((time.monotonic() - tick) * 1000)
                 metrics["browser_searches"] += 1
                 if http_enabled:
+                    phase('http_comparison')
                     tick = time.monotonic()
                     direct = await client.search(service, zone, department)
                     metrics["http_ms"] += round((time.monotonic() - tick) * 1000)
@@ -135,6 +150,7 @@ async def scan(page, service_label, zone_label, department_label, timeout, compa
                     else:
                         metrics["comparisons"] += 1
             else:
+                phase('http_search')
                 records = await client.search(service, zone, department)
                 metrics["http_searches"] += 1
             result["entries"].append([zone_name, department_name, [list(r) for r in records]])
@@ -176,12 +192,16 @@ async def main():
                                         channel="chrome" if os.getenv('GITHUB_ACTIONS')=='true' else None)
         try:
             page = await browser.new_page()
+            phase('login')
             await login(page)
+            phase('open_turnos')
             await page.goto(PORTAL_URL.rstrip("/") + "/action/applicationAfi/turnos/turno/listar/listarCompleto",
-                            wait_until="networkidle", timeout=TOUT)
+                            wait_until="domcontentloaded", timeout=TOUT)
+            phase('new_turn_tab')
             await page.locator('a.nav-link[href="#divTNue"]').first.click(timeout=TOUT)
             await page.locator("#servimod").wait_for(timeout=TOUT)
             # Acotar toda exploración a 330s, antes del límite externo de 420s.
+            phase('scan')
             async with asyncio.timeout(330):
                 result, metrics = await scan(page, os.environ["OBJ_SERVICIO"].strip(),
                                              "*" if compare_only else os.environ["OBJ_ZONA"].strip(),
@@ -210,6 +230,7 @@ if __name__ == "__main__":
         code = str(exc) if isinstance(exc, CatalogError) else type(exc).__name__
         if isinstance(exc,CatalogError) and exc.diagnostic is not None:
             print('OSEP_CATALOG_DIAGNOSTIC='+json.dumps(exc.diagnostic,separators=(',',':')),flush=True)
+        print('OSEP_CATALOG_PHASE='+CURRENT_STAGE,flush=True)
         print("OSEP_CATALOG_ERROR=" + code, flush=True)
         sys.exit(3)
 
