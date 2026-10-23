@@ -41,6 +41,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
       - name: Verify private Cloudflare runtime access
         env:
@@ -50,8 +52,7 @@ jobs:
 
       - name: Install deps (pip)
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
       - name: Install Playwright Browsers (Python CLI)
         if: ${{ !inputs.catalog_readonly }}
