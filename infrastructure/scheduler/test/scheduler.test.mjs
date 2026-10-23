@@ -311,6 +311,7 @@ test('catálogo pendiente espera toda la franja activa; diagnóstico fuerza el s
   assert.equal(snapshot.DRY_RUN,'true');
   assert.equal(snapshot.OBJ_DEPTO,'__CATALOG_COMPARE__');
   assert.equal(posts[0].inputs.catalog_compare,true);
+  assert.equal(posts[0].inputs.catalog_readonly,true);
   assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='master'").get().state,'pending');
 });
 

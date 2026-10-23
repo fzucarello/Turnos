@@ -172,7 +172,8 @@ async def main():
     logging.getLogger("osep").setLevel(logging.WARNING)
     compare_only = os.getenv("OBJ_DEPTO") == "__CATALOG_COMPARE__"
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=HEADLESS)
+        browser = await p.chromium.launch(headless=HEADLESS,
+                                        channel="chrome" if os.getenv('GITHUB_ACTIONS')=='true' else None)
         try:
             page = await browser.new_page()
             await login(page)
