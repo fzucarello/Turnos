@@ -243,6 +243,29 @@ async def scan(page, service_label, zone_label, department_label, timeout, compa
     return result, metrics
 
 
+async def open_new_turn_tab(page, portal_url, timeout):
+    """Reintentar navegación de lectura si la pantalla Nuevo no termina de cargar."""
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+    url=portal_url.rstrip("/") + "/action/applicationAfi/turnos/turno/listar/listarCompleto"
+    for attempt in range(3):
+        try:
+            phase('open_turnos')
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            phase('new_turn_tab')
+            link=page.locator('a.nav-link[href="#divTNue"]').first
+            await link.wait_for(state="visible",timeout=timeout)
+            await link.click(timeout=timeout)
+            await page.locator("#servimod").wait_for(state="visible",timeout=timeout)
+            return
+        except PlaywrightTimeoutError:
+            login_visible=await page.locator('input[type="password"]').is_visible()
+            if login_visible:
+                raise CatalogError("session_expired_during_catalog") from None
+            if attempt==2:
+                raise CatalogError("new_turn_tab_timeout",{"attempts":3}) from None
+            await page.wait_for_timeout(650*(attempt+1))
+
+
 async def main():
     # Importar el bot sólo para el login existente. Su función de reservas nunca se llama.
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -257,12 +280,7 @@ async def main():
             page = await browser.new_page()
             phase('login')
             await login(page)
-            phase('open_turnos')
-            await page.goto(PORTAL_URL.rstrip("/") + "/action/applicationAfi/turnos/turno/listar/listarCompleto",
-                            wait_until="domcontentloaded", timeout=TOUT)
-            phase('new_turn_tab')
-            await page.locator('a.nav-link[href="#divTNue"]').first.click(timeout=TOUT)
-            await page.locator("#servimod").wait_for(timeout=TOUT)
+            await open_new_turn_tab(page, PORTAL_URL, TOUT)
             # Acotar toda exploración a 330s, antes del límite externo de 420s.
             phase('scan')
             async with asyncio.timeout(330):
