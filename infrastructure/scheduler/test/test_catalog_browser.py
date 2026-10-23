@@ -49,11 +49,20 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         self.paginate_rows=False
         self.reuse_table=False
         self.keep_stale=False
+        self.latin1=False
         async def route(request_route):
             request=request_route.request
             path=urlsplit(request.url).path
             if path=="/":
                 body=PAGE
+                if self.latin1:
+                    body+='''<script>window.search=()=>{
+                      const x=new XMLHttpRequest();x.open('POST','SEARCH_PATH');
+                      x.setRequestHeader('Content-Type','application/x-www-form-urlencoded;charset=UTF-8');
+                      x.onload=()=>document.querySelector('#lista_profesionales').innerHTML=x.responseText;
+                      const p=new URLSearchParams(new FormData(document.querySelector('#datosFiltroNuevoTurno')));
+                      p.set('buscar','Buscar');x.send(p.toString());
+                    };</script>'''.replace('SEARCH_PATH',SEARCH_PATH)
                 if self.paginate_rows:
                     body='<style>.ocultar{display:none}</style>'+body.replace("document.querySelector('#lista_profesionales').innerHTML=await r.text();", "{document.querySelector('#lista_profesionales').innerHTML=await r.text();Array.from(document.querySelectorAll('#tblResultadoProfesionales tbody tr')).slice(20).forEach(r=>r.style.display='none');}")
                 if self.reuse_table:
@@ -78,6 +87,9 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
                 if self.paginate_rows:
                     rows=[[str(i+1)+' PROFESIONAL '+str(i),'CENTRO<br><span class="ocultar">TEXTO OCULTO</span><br>DOMICILIO','S','H','D','A'] for i in range(21)]
                 body=html(rows)
+                if self.latin1:
+                    body=html([['1 PROFESIONAL FICTICIO PEÑA','CENTRO FICTICIO','S','H','D','A']])
+                    return await request_route.fulfill(content_type='text/html; charset=ISO-8859-1',body=body.encode('iso-8859-1'))
                 return await request_route.fulfill(content_type="text/html",body=body)
             raise AssertionError("Unexpected endpoint")
         await self.page.route("https://portal.example/**",route)
@@ -171,6 +183,14 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(records),21)
         self.assertTrue(all(center=='CENTRO' for _,center in records))
         self.assertNotIn('TEXTO OCULTO',str(records))
+
+    async def test_latin1_response_matches_browser_rendered_accents(self):
+        self.latin1=True
+        await self.page.reload()
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        records=await browser_search(self.page,client,'s','z1','d1',3000)
+        self.assertEqual(records,[('PROFESIONAL FICTICIO PEÑA','CENTRO FICTICIO')])
 
     async def test_portal_can_refresh_data_inside_the_same_table_node(self):
         self.reuse_table=True
