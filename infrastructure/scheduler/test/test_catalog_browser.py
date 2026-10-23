@@ -46,11 +46,20 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         self.searches=[]
         self.javascript=False
         self.reverse_rows=False
+        self.paginate_rows=False
+        self.reuse_table=False
+        self.keep_stale=False
         async def route(request_route):
             request=request_route.request
             path=urlsplit(request.url).path
             if path=="/":
                 body=PAGE
+                if self.paginate_rows:
+                    body='<style>.ocultar{display:none}</style>'+body.replace("document.querySelector('#lista_profesionales').innerHTML=await r.text();", "{document.querySelector('#lista_profesionales').innerHTML=await r.text();Array.from(document.querySelectorAll('#tblResultadoProfesionales tbody tr')).slice(20).forEach(r=>r.style.display='none');}")
+                if self.reuse_table:
+                    body=body.replace("document.querySelector('#lista_profesionales').innerHTML=await r.text();", "document.querySelector('#tblResultadoProfesionales').innerHTML=new DOMParser().parseFromString(await r.text(),'text/html').querySelector('table').innerHTML;")
+                if self.keep_stale:
+                    body=body.replace("document.querySelector('#lista_profesionales').innerHTML=await r.text();", "await r.text();")
                 if self.reverse_rows:
                     body=body.replace("document.querySelector('#lista_profesionales').innerHTML=await r.text();", "{ const dom=new DOMParser().parseFromString(await r.text(),'text/html'); const tb=dom.querySelector('tbody'); Array.from(tb.children).reverse().forEach(tr=>tb.appendChild(tr)); document.querySelector('#lista_profesionales').innerHTML=dom.body.innerHTML; }")
                 return await request_route.fulfill(content_type="text/html",body=body)
@@ -66,6 +75,8 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
                 rows=[["1 PROFESIONAL "+fields["id_dpto"][0],"CENTRO "+fields["id_zona"][0],"S","H","D","A"]]
                 if self.reverse_rows:
                     rows.append(['2 SEGUNDO PROFESIONAL','OTRO CENTRO','S','H','D','A'])
+                if self.paginate_rows:
+                    rows=[[str(i+1)+' PROFESIONAL '+str(i),'CENTRO<br><span class="ocultar">TEXTO OCULTO</span><br>DOMICILIO','S','H','D','A'] for i in range(21)]
                 body=html(rows)
                 return await request_route.fulfill(content_type="text/html",body=body)
             raise AssertionError("Unexpected endpoint")
@@ -150,6 +161,31 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         records=await browser_search(self.page,client,'s','z1','d1',3000)
         self.assertEqual(len(records),1)
         self.assertEqual(len(self.searches),1)
+
+    async def test_later_pager_rows_render_with_hidden_cell_text_still_hidden(self):
+        self.paginate_rows=True
+        await self.page.reload()
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        records=await browser_search(self.page,client,'s','z1','d1',3000)
+        self.assertEqual(len(records),21)
+        self.assertTrue(all(center=='CENTRO' for _,center in records))
+        self.assertNotIn('TEXTO OCULTO',str(records))
+
+    async def test_portal_can_refresh_data_inside_the_same_table_node(self):
+        self.reuse_table=True
+        await self.page.reload()
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        self.assertEqual(len(await browser_search(self.page,client,'s','z1','d1',3000)),1)
+
+    async def test_fresh_http_response_without_table_refresh_is_rejected(self):
+        self.keep_stale=True
+        await self.page.reload()
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        with self.assertRaisesRegex(CatalogError,'browser_table_not_refreshed'):
+            await browser_search(self.page,client,'s','z1','d1',3000)
 
     async def test_selected_controls_are_checked_independently_of_legacy_named_items(self):
         await self.page.evaluate("""() => {
