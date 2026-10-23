@@ -19,12 +19,43 @@ class CatalogError(Exception):
         self.diagnostic = diagnostic
 
 
+class CatalogNoResults(CatalogError):
+    """OSEP confirmó explícitamente ausencia de agendas en respuesta AJAX."""
+
+
+def explicit_empty_notice(body):
+    """Sólo aceptar una notificación JS pequeña e inequívoca de cero agendas.
+
+    No interpretar como vacío un error de sesión, autenticación o acceso.
+    Jamás se evalúa el JavaScript del servidor ni se conserva su contenido.
+    """
+    if not 1 <= len(body) <= 2048:
+        return False
+    try:
+        message = body.decode("utf-8")
+    except UnicodeError:
+        try:
+            message = body.decode("latin-1")
+        except UnicodeError:
+            return False
+    if re.search(r"\b(?:error|sesi[oó]n|session|login|logue|usuario|password|contrase[nñ]a|"
+                 r"credencial|autenticaci[oó]n|autorizaci[oó]n|permiso|acceso|vencid[ao]|expirad[ao])\b",
+                 message, re.I):
+        return False
+    return bool(
+        re.search(r"\bno\b.{0,105}\b(?:encontr\w*|existen?|hay|registr\w*)\b"
+                  r".{0,110}\b(?:agendas?|profesionales?|resultados?|registros?)\b", message, re.I | re.S)
+        or re.search(r"\bsin\s+(?:agendas?|profesionales?|resultados?|registros?)\b", message, re.I)
+    )
+
+
 def javascript_diagnostic(body):
     text=body.decode('utf-8',errors='replace')
     return {
         'bytes':len(body),
         'mentions_no_results':bool(re.search(r'(?:no\b.{0,100}(?:encontr|exist|hay)|sin\s+).{0,100}(?:agenda|profesional|resultado|registro)',text,re.I|re.S)),
         'mentions_session':bool(re.search(r'(?:sesi.n|session|login|logue)',text,re.I)),
+        'verified_empty':explicit_empty_notice(body),
         'recognized_calls':[name for name in ['alert','mostrarMensaje','mostrarMensajeError','showMessage','showError','setFocus'] if re.search(r'\b'+name+r'\s*\(',text)]
     }
 
@@ -287,7 +318,10 @@ class SessionHTTP:
         if self.template is None:
             raise CatalogError("missing_observed_request")
         fields = {**self.template, "servimod": service, "id_zona": zone, "id_dpto": department}
-        return parse_results(await self.read(self.search_url, "POST", fields))
+        try:
+            return parse_results(await self.read(self.search_url, "POST", fields))
+        except CatalogNoResults:
+            return []
 
     async def departments(self, zone):
         if self.department_url is None:
@@ -308,6 +342,8 @@ async def checked_response(response, browser=False):
         diagnostic=None
         if mime in {'text/javascript','application/javascript'}:
             body=await response.body()
+            if explicit_empty_notice(body):
+                raise CatalogNoResults("explicit_no_agendas") from None
             if len(body)<=8192:
                 diagnostic=javascript_diagnostic(body)
         raise CatalogError("unexpected_content_type",diagnostic)
