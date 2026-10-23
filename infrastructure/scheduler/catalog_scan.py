@@ -71,8 +71,22 @@ async def browser_search(page, client, service, zone, department, timeout):
     # Sólo se espera una respuesta iniciada por este clic y con estos filtros.
     phase('search_response')
     async with page.expect_response(matches, timeout=timeout) as received:
-        phase('search_click')
-        await page.locator('form[name="datosFiltroNuevoTurno"] input#buscar').click(timeout=timeout)
+        form=page.locator('form[name="datosFiltroNuevoTurno"]')
+        meta=await form.evaluate("""(form,expected)=>({
+          html_valid:form.checkValidity(),
+          fields:Object.fromEntries(Object.entries(expected).map(([key,value])=>[key,form.elements.namedItem(key)?.value===value])),
+          native_function:typeof window.buscarProfesionales==='function'
+        })""",expected)
+        if os.getenv('OBJ_DEPTO')=='__CATALOG_COMPARE__':
+            print('OSEP_CATALOG_FORM_CHECK='+json.dumps(meta,separators=(',',':')),flush=True)
+        if not meta['html_valid'] or not all(meta['fields'].values()):
+            raise CatalogError('search_form_invalid_or_changed')
+        if meta['native_function']:
+            phase('search_native_action')
+            await page.evaluate('() => window.buscarProfesionales()')
+        else:
+            phase('search_click')
+            await form.locator('input#buscar').click(timeout=timeout)
         phase('search_response')
     response = await received.value
     html = await checked_response(response)
