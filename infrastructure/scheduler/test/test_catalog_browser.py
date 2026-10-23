@@ -123,6 +123,23 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         records=await browser_search(self.page,client,'s','z1','d1',3000)
         self.assertEqual(len(records),2)
 
+    async def test_pager_footer_and_action_changes_preserve_catalog_identity(self):
+        await self.page.evaluate("""() => {
+          const target=document.querySelector('#lista_profesionales');
+          new MutationObserver(()=>{
+            const table=target.querySelector('table');
+            if(!table||table.dataset.changed)return;
+            table.dataset.changed='true';
+            table.querySelector('thead tr:last-child').remove();
+            const footer=table.insertRow();const c=footer.insertCell();c.colSpan=6;c.textContent='Mostrando otra página';
+            table.querySelector('tbody tr td:last-child').textContent='Botón de agenda actualizado';
+          }).observe(target,{childList:true,subtree:true});
+        }""")
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        records=await browser_search(self.page,client,'s','z1','d1',3000)
+        self.assertEqual(len(records),1)
+
     async def test_native_search_action_emits_the_same_validated_request(self):
         await self.page.evaluate("""() => {
           window.buscarProfesionales=search;
@@ -167,4 +184,5 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(metrics["equivalent"])
         self.assertEqual(metrics["comparisons"],2)
         self.assertEqual(len(set(f["id_zona"][0] for f in self.searches)),2)
+
 

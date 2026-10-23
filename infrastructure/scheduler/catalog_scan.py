@@ -104,14 +104,29 @@ async def browser_search(page, client, service, zone, department, timeout):
     client.remember_search(response.request)
     # Contrastar también con la tabla que acaba de insertar la interfaz.
     phase('search_dom')
-    await page.wait_for_function("""
+    try:
+        await page.wait_for_function("""
       html => {
         const incoming=new DOMParser().parseFromString(html,'text/html').querySelector('#tblResultadoProfesionales');
         const live=document.querySelector('#tblResultadoProfesionales');
-        const data=t=>Array.from(t?.querySelectorAll('tbody tr')||[]).map(r=>Array.from(r.querySelectorAll(':scope > td')).map(c=>(c.textContent||'').replace(/\\s+/g,' ').trim())).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+        const text=c=>{const n=c.cloneNode(true);n.querySelectorAll('script,style,.ocultar,[hidden]').forEach(x=>x.remove());return (n.textContent||'').replace(/\\s+/g,' ').trim()};
+        // El paginador modifica el pie, los ordinales y los botones de agenda.
+        // La identidad del catálogo está en las dos primeras columnas de datos.
+        const data=t=>Array.from(t?.querySelectorAll('tr')||[]).map(r=>Array.from(r.querySelectorAll(':scope > td')))
+          .filter(c=>c.length>=6).map(c=>[text(c[0]).replace(/^\\d+\\s+/,''),text(c[1])])
+          .sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
         return incoming && live && JSON.stringify(data(incoming))===JSON.stringify(data(live));
       }
     """, arg=html, timeout=timeout)
+    except Exception:
+        diagnostic=await page.evaluate("""html=>{
+          const incoming=new DOMParser().parseFromString(html,'text/html').querySelector('#tblResultadoProfesionales');
+          const live=document.querySelector('#tblResultadoProfesionales');
+          const shape=t=>({present:!!t,rows:t?.querySelectorAll('tr').length||0,
+            columns:Array.from(t?.querySelectorAll('tr')||[]).map(r=>r.querySelectorAll(':scope > td').length)});
+          return {incoming:shape(incoming),live:shape(live)};
+        }""",html)
+        raise CatalogError('browser_dom_mismatch',diagnostic) from None
     # Comparar además los pares que efectivamente muestra el paginado del
     # navegador, incluyendo su tratamiento de texto oculto y saltos de línea.
     await page.evaluate("""() => {
@@ -260,4 +275,5 @@ if __name__ == "__main__":
         print('OSEP_CATALOG_PHASE='+CURRENT_STAGE,flush=True)
         print("OSEP_CATALOG_ERROR=" + code, flush=True)
         sys.exit(3)
+
 
