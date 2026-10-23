@@ -124,6 +124,7 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         link_collection.first=link
         select=MagicMock()
         select.wait_for=AsyncMock()
+        select.is_visible=AsyncMock(return_value=False)
         password=MagicMock()
         password.is_visible=AsyncMock(return_value=False)
         mock_page.locator.side_effect=lambda sel: (
@@ -142,10 +143,13 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         link.wait_for=AsyncMock(side_effect=PlaywrightTimeoutError('temporary'))
         link_collection=MagicMock()
         link_collection.first=link
+        select=MagicMock()
+        select.is_visible=AsyncMock(return_value=False)
         password=MagicMock()
         password.is_visible=AsyncMock(return_value=True)
         mock_page.locator.side_effect=lambda sel: (
-            link_collection if '#divTNue' in sel else password)
+            link_collection if '#divTNue' in sel else
+            select if sel=='#servimod' else password)
         with self.assertRaisesRegex(CatalogError,'session_expired_during_catalog'):
             await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
         self.assertEqual(mock_page.goto.await_count,1)
@@ -162,12 +166,13 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         mock_link_collection.count=AsyncMock(return_value=1)
         service=MagicMock()
         service.count=AsyncMock(return_value=1)
+        service.is_visible=AsyncMock(return_value=False)
         form=MagicMock()
         form.count=AsyncMock(return_value=1)
         password=MagicMock()
         password.is_visible=AsyncMock(return_value=False)
         mock_page.locator.side_effect=lambda selector: {
-            'a.nav-link[href="#divTNue"]':mock_link_collection,
+            'a[href="#divTNue"], [data-bs-target="#divTNue"], [data-target="#divTNue"]':mock_link_collection,
             '#servimod':service,
             'form[name="datosFiltroNuevoTurno"]':form,
             'input[type="password"]':password
@@ -178,6 +183,16 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
             {'attempts':3,'stage':'tab_visible','tab_links':1,
              'service_controls':1,'forms':1})
         self.assertEqual(mock_page.goto.await_count,3)
+
+    async def test_tab_form_visible_needs_no_tab_click(self):
+        mock_page=MagicMock()
+        mock_page.goto=AsyncMock()
+        service=MagicMock()
+        service.is_visible=AsyncMock(return_value=True)
+        mock_page.locator.side_effect=lambda sel: service if sel=="#servimod" else MagicMock()
+        await open_new_turn_tab(mock_page,"https://portal.example/webapp_pri",1000)
+        mock_page.goto.assert_awaited_once()
+        service.wait_for.assert_not_called()
 
     async def test_complete_scan_uses_fresh_response_then_http(self):
         with patch.object(SessionHTTP,"read",self.transport()):
