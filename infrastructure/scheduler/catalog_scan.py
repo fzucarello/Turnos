@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 from catalog_http import (CatalogError, SessionHTTP, SEARCH_PATH, DEPARTMENT_PATH,
-                          checked_response, parse_options, parse_results, records_from_rows)
+                          checked_response, parse_options, parse_results, records_from_rows, mismatch_diagnostic)
 
 CURRENT_STAGE = "start"
 
@@ -152,10 +152,7 @@ async def browser_search(page, client, service, zone, department, timeout):
     """)
     rendered=records_from_rows(visible_rows)
     if rendered != records:
-        raise CatalogError('browser_result_mismatch',{'response_records':len(records),'rendered_records':len(rendered),
-                                                   'intersection':len(set(records)&set(rendered)),
-                                                   'matching_doctors':len({r[0] for r in records}&{r[0] for r in rendered}),
-                                                   'matching_centers':len({r[1] for r in records}&{r[1] for r in rendered})})
+        raise CatalogError('browser_result_mismatch',mismatch_diagnostic(records,rendered))
     return records
 
 

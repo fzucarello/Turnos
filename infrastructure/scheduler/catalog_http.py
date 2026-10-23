@@ -33,6 +33,35 @@ def normalized(value):
     return re.sub(r"\s+", " ", value).strip()
 
 
+def mismatch_diagnostic(records, rendered):
+    expected={r[0] for r in records}; actual={r[0] for r in rendered}
+    def matching(transform):
+        return len({transform(x) for x in expected}&{transform(x) for x in actual})
+    tokens={}
+    def shape(value):
+        output=[]
+        for token in re.findall(r'\d+|[^\W\d_]+|[^\w\s]',value):
+            if token.isdigit():
+                output.append('NUMBER')
+            else:
+                key=token.casefold()
+                if key not in tokens:tokens[key]='T'+str(len(tokens)+1)
+                output.append(tokens[key])
+        return {'tokens':output,'length':len(value),'leading_digits':len(re.match(r'^\d*',value)[0])}
+    return {'response_records':len(records),'rendered_records':len(rendered),
+            'intersection':len(set(records)&set(rendered)),
+            'response_doctors':len(expected),'rendered_doctors':len(actual),
+            'matching_doctors':matching(lambda x:x),
+            'matching_casefold':matching(str.casefold),
+            'matching_without_spaces':matching(lambda x:re.sub(r'\s+','',x).casefold()),
+            'matching_without_ordinal':matching(lambda x:re.sub(r'^\d+\s*','',x).casefold()),
+            'response_centers':len({r[1] for r in records}),
+            'rendered_centers':len({r[1] for r in rendered}),
+            'matching_centers':len({r[1] for r in records}&{r[1] for r in rendered}),
+            'response_shapes':[shape(x) for x in sorted(expected-actual)[:5]],
+            'rendered_shapes':[shape(x) for x in sorted(actual-expected)[:5]]}
+
+
 def records_from_rows(rows):
     if len(rows) > MAX_ROWS:
         raise CatalogError("row_limit")
