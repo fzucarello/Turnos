@@ -248,13 +248,17 @@ async def open_new_turn_tab(page, portal_url, timeout):
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     url=portal_url.rstrip("/") + "/action/applicationAfi/turnos/turno/listar/listarCompleto"
     for attempt in range(3):
+        stage="navigation"
         try:
             phase('open_turnos')
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            stage="tab_visible"
             phase('new_turn_tab')
             link=page.locator('a.nav-link[href="#divTNue"]').first
             await link.wait_for(state="visible",timeout=timeout)
+            stage="tab_click"
             await link.click(timeout=timeout)
+            stage="service_visible"
             await page.locator("#servimod").wait_for(state="visible",timeout=timeout)
             return
         except PlaywrightTimeoutError:
@@ -262,7 +266,16 @@ async def open_new_turn_tab(page, portal_url, timeout):
             if login_visible:
                 raise CatalogError("session_expired_during_catalog") from None
             if attempt==2:
-                raise CatalogError("new_turn_tab_timeout",{"attempts":3}) from None
+                # Sólo características del DOM, sin credenciales, URLs ni texto.
+                diagnostic={"attempts":3,"stage":stage}
+                for field,selector in (("tab_links",'a.nav-link[href="#divTNue"]'),
+                                       ("service_controls","#servimod"),
+                                       ("forms",'form[name="datosFiltroNuevoTurno"]')):
+                    try:
+                        diagnostic[field]=min(await page.locator(selector).count(),99)
+                    except Exception:
+                        diagnostic[field]=-1
+                raise CatalogError("new_turn_tab_timeout",diagnostic) from None
             await page.wait_for_timeout(650*(attempt+1))
 
 
