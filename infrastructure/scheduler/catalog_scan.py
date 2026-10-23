@@ -91,6 +91,17 @@ async def browser_search(page, client, service, zone, department, timeout):
             print('OSEP_CATALOG_FORM_CHECK='+json.dumps(meta,separators=(',',':')),flush=True)
         if not meta['allowed_options'] or not meta['html_valid'] or not meta['controls_valid'] or not all(meta['fields'].values()):
             raise CatalogError('search_form_invalid_or_changed')
+        await page.evaluate("""() => {
+          window.__osepCatalogPending?.observer?.disconnect();
+          const state={node:document.querySelector('#tblResultadoProfesionales'),changed:false};
+          state.observer=new MutationObserver(changes=>{
+            if(document.querySelector('#tblResultadoProfesionales')!==state.node ||
+              changes.some(m=>(m.target.nodeType===1?m.target:m.target.parentElement)?.closest('#tblResultadoProfesionales tbody')))
+              state.changed=true;
+          });
+          state.observer.observe(document.body,{subtree:true,childList:true,characterData:true});
+          window.__osepCatalogPending=state;
+        }""")
         if meta['native_function']:
             phase('search_native_action')
             await page.evaluate('() => window.buscarProfesionales()')
@@ -105,19 +116,11 @@ async def browser_search(page, client, service, zone, department, timeout):
     # Contrastar también con la tabla que acaba de insertar la interfaz.
     phase('search_dom')
     try:
-        await page.wait_for_function("""
-      html => {
-        const incoming=new DOMParser().parseFromString(html,'text/html').querySelector('#tblResultadoProfesionales');
-        const live=document.querySelector('#tblResultadoProfesionales');
-        const text=c=>{const n=c.cloneNode(true);n.querySelectorAll('script,style,.ocultar,[hidden]').forEach(x=>x.remove());return (n.textContent||'').replace(/\\s+/g,' ').trim()};
-        // El paginador modifica el pie, los ordinales y los botones de agenda.
-        // La identidad del catálogo está en las dos primeras columnas de datos.
-        const data=t=>Array.from(t?.querySelectorAll('tr')||[]).map(r=>Array.from(r.querySelectorAll(':scope > td')))
-          .filter(c=>c.length>=6).map(c=>[text(c[0]).replace(/^\\d+\\s+/,''),text(c[1])])
-          .sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-        return incoming && live && JSON.stringify(data(incoming))===JSON.stringify(data(live));
-      }
-    """, arg=html, timeout=timeout)
+        await page.wait_for_function("""() => {
+          const live=document.querySelector('#tblResultadoProfesionales');
+          const state=window.__osepCatalogPending;
+          return live && state && (live!==state.node || state.changed);
+        }""", timeout=timeout)
     except Exception:
         diagnostic=await page.evaluate("""html=>{
           const incoming=new DOMParser().parseFromString(html,'text/html').querySelector('#tblResultadoProfesionales');
@@ -126,20 +129,31 @@ async def browser_search(page, client, service, zone, department, timeout):
             columns:Array.from(t?.querySelectorAll('tr')||[]).map(r=>r.querySelectorAll(':scope > td').length)});
           return {incoming:shape(incoming),live:shape(live)};
         }""",html)
-        raise CatalogError('browser_dom_mismatch',diagnostic) from None
+        raise CatalogError('browser_table_not_refreshed',diagnostic) from None
+    finally:
+        await page.evaluate('() => window.__osepCatalogPending?.observer?.disconnect()')
     # Comparar además los pares que efectivamente muestra el paginado del
     # navegador, incluyendo su tratamiento de texto oculto y saltos de línea.
     await page.evaluate("""() => {
       const pager=window.tblResultadoProfesionales;
       if(pager && typeof pager.showall==='function')pager.showall();
+      // Algunos paginadores sólo ocultan filas con display:none. Mostrar las
+      // filas de datos permite usar innerText real, que respeta texto oculto
+      // dentro de las celdas, también en páginas posteriores a la primera.
+      const rows=Array.from(document.querySelectorAll('#tblResultadoProfesionales tbody tr'))
+        .filter(r=>r.querySelectorAll(':scope > td').length>=6);
+      if(rows.length>500)throw new Error('row_limit');
+      rows.forEach(r=>r.style.setProperty('display','table-row','important'));
     }""")
     phase('rendered_records')
     visible_rows=await page.locator('#tblResultadoProfesionales tbody tr').evaluate_all("""
       rows => rows.map(r=>Array.from(r.querySelectorAll(':scope > td')))
         .filter(cells=>cells.length>=6).map(cells=>cells.map(c=>c.innerText))
     """)
-    if records_from_rows(visible_rows) != records:
-        raise CatalogError('browser_result_mismatch')
+    rendered=records_from_rows(visible_rows)
+    if rendered != records:
+        raise CatalogError('browser_result_mismatch',{'response_records':len(records),'rendered_records':len(rendered),
+                                                   'intersection':len(set(records)&set(rendered))})
     return records
 
 
