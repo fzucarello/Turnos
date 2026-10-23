@@ -14,6 +14,20 @@ MAX_BODY = 1500000
 class CatalogError(Exception):
     """Sólo códigos técnicos seguros, sin cuerpos HTTP ni valores de formularios."""
 
+    def __init__(self, code, diagnostic=None):
+        super().__init__(code)
+        self.diagnostic = diagnostic
+
+
+def javascript_diagnostic(body):
+    text=body.decode('utf-8',errors='replace')
+    return {
+        'bytes':len(body),
+        'mentions_no_results':bool(re.search(r'(?:no\b.{0,100}(?:encontr|exist|hay)|sin\s+).{0,100}(?:agenda|profesional|resultado|registro)',text,re.I|re.S)),
+        'mentions_session':bool(re.search(r'(?:sesi.n|session|login|logue)',text,re.I)),
+        'recognized_calls':[name for name in ['alert','mostrarMensaje','mostrarMensajeError','showMessage','showError','setFocus'] if re.search(r'\b'+name+r'\s*\(',text)]
+    }
+
 
 def normalized(value):
     return re.sub(r"\s+", " ", value).strip()
@@ -258,7 +272,12 @@ async def checked_response(response):
         raise CatalogError("http_" + str(response.status))
     mime = response.headers.get("content-type", "").split(";")[0].lower().strip()
     if mime != "text/html":
-        raise CatalogError("unexpected_content_type")
+        diagnostic=None
+        if mime in {'text/javascript','application/javascript'}:
+            body=await response.body()
+            if len(body)<=8192:
+                diagnostic=javascript_diagnostic(body)
+        raise CatalogError("unexpected_content_type",diagnostic)
     length = response.headers.get("content-length", "")
     if length.isdigit() and int(length) > MAX_BODY:
         raise CatalogError("body_limit")

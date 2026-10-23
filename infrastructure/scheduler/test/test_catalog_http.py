@@ -8,7 +8,7 @@ from urllib.parse import urlencode, parse_qs
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
 from catalog_http import (CatalogError, SessionHTTP, SEARCH_PATH, checked_response,
-                          parse_results, parse_options, request_fields)
+                          parse_results, parse_options, request_fields, javascript_diagnostic)
 
 def html(rows=None, total=None):
     rows = rows if rows is not None else [
@@ -32,6 +32,12 @@ def page(responses):
                                  request=types.SimpleNamespace(fetch=fetch))
 
 class ParserTests(unittest.TestCase):
+    def test_javascript_diagnostic_keeps_only_flags_and_known_function_names(self):
+        data=javascript_diagnostic(b"alert('No se encontraron agendas PRIVATE_FAKE_SECRET')")
+        self.assertTrue(data['mentions_no_results'])
+        self.assertEqual(data['recognized_calls'],['alert'])
+        self.assertNotIn('PRIVATE_FAKE_SECRET',str(data))
+
     def test_hidden_duplicate_name_and_block_center(self):
         row=['1 PROFESIONAL FICTICIO','<div>PROFESIONAL FICTICIO</div><div class="ocultar">PROFESIONAL FICTICIO</div><div>CENTRO FICTICIO<br>DOMICILIO</div>','S','H','D','A']
         self.assertEqual(parse_results(html([row])),[('PROFESIONAL FICTICIO','CENTRO FICTICIO')])
@@ -77,7 +83,7 @@ class RequestTests(unittest.IsolatedAsyncioTestCase):
         r=response("alert('error')",mime="text/javascript")
         with self.assertRaisesRegex(CatalogError,"unexpected_content_type"):
             await checked_response(r)
-        r.body.assert_not_called()
+        r.body.assert_awaited_once()
 
     async def test_expired_session_redirect_and_wrong_status(self):
         for r in [response(status=302),response(status=401),response("<form>Login</form>")]:

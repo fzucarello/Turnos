@@ -207,6 +207,8 @@ if __name__ == "__main__":
         sys.exit(asyncio.run(main()))
     except Exception as exc:
         code = str(exc) if isinstance(exc, CatalogError) else type(exc).__name__
+        if isinstance(exc,CatalogError) and exc.diagnostic is not None:
+            print('OSEP_CATALOG_DIAGNOSTIC='+json.dumps(exc.diagnostic,separators=(',',':')),flush=True)
         print("OSEP_CATALOG_ERROR=" + code, flush=True)
         sys.exit(3)
 

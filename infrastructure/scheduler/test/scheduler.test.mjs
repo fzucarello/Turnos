@@ -314,3 +314,16 @@ test('catálogo pendiente espera toda la franja activa; diagnóstico fuerza el s
   assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='master'").get().state,'pending');
 });
 
+test('diagnóstico ocupado conserva la cola y puede reintentar en otro tick',async()=>{
+  const {db,env}=setup('production');const bot=botConfig(fixture);
+  db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,kind,state,config_json) VALUES('compare',?,?,?,1,'catalog_compare','pending',?)")
+    .run(new Date(time).toISOString(),new Date(time).toISOString(),'test',JSON.stringify(bot));
+  mockGitHub({busy:true});Date.now=()=>time+60000;
+  await dispatch({...controller,scheduledTime:Date.now()},env);
+  assert.equal(db.prepare('SELECT state FROM manual_queue').get().state,'pending');
+  const posts=mockGitHub();Date.now=()=>time+120000;
+  await dispatch({...controller,scheduledTime:Date.now()},env);
+  assert.equal(posts.length,1);
+  assert.equal(db.prepare('SELECT state FROM manual_queue').get().state,'accepted');
+});
+
