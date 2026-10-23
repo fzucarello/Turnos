@@ -100,7 +100,7 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
 
   // Un INSERT atómico gana; los demás intentos del mismo slot no llaman a GitHub.
   // En validación todos los ticks usan una sola clave, por lo que la prueba ocurre una vez.
-  const slot = manual ? (manual.kind==="catalog_master" ? `manual:${manual.id}:${Math.floor(scheduledTime/60000)}` : `manual:${manual.id}`) : mode === "validate" ? `validation:${env.VALIDATION_ID}` : `cron:${Math.floor(scheduledTime / 60000)}`;
+  const slot = manual ? (["catalog_master","catalog_compare"].includes(manual.kind) ? `manual:${manual.id}:${Math.floor(scheduledTime/60000)}` : `manual:${manual.id}`) : mode === "validate" ? `validation:${env.VALIDATION_ID}` : `cron:${Math.floor(scheduledTime / 60000)}`;
   const result = await env.LEDGER.prepare(
     "INSERT INTO dispatches(slot,scheduled_at,cron,mode,state,updated_at,config_sha256,request_id,config_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(slot) DO NOTHING",
   ).bind(slot, context.scheduled_at, cron, mode, "claimed", new Date().toISOString(), configSha256, requestId, configJson).run();
@@ -116,7 +116,7 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
     if (manual) await env.LEDGER.prepare(
       "UPDATE manual_queue SET state=?,updated_at=?,run_id=?,error_code=? WHERE id=?"
     ).bind(
-      state === "busy_skipped" ? (manual.kind==="catalog_master"?"pending":"busy")
+      state === "busy_skipped" ? (["catalog_master","catalog_compare"].includes(manual.kind)?"pending":"busy")
       : state === "accepted" ? "accepted"
       : state === "rejected" ? "rejected"
       : state === "uncertain" ? "uncertain" : "dispatching",
@@ -158,6 +158,7 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
       method: "POST", redirect: "manual", signal: AbortSignal.timeout(20000),
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({ ref: env.GITHUB_REF, inputs: { dry_run: dryRun ? "true" : "false", request_id: requestId,
+        ...(config.OBJ_CATALOGO==="true"?{catalog_readonly:true}:{}),
         ...(manual?.kind==="catalog_compare"?{catalog_compare:true}:{}) } }),
     });
     // La API actual devuelve 200 con ID; se admite también el antiguo 204.

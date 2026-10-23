@@ -172,7 +172,8 @@ async def main():
     logging.getLogger("osep").setLevel(logging.WARNING)
     compare_only = os.getenv("OBJ_DEPTO") == "__CATALOG_COMPARE__"
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=HEADLESS)
+        browser = await p.chromium.launch(headless=HEADLESS,
+                                        channel="chrome" if os.getenv('GITHUB_ACTIONS')=='true' else None)
         try:
             page = await browser.new_page()
             await login(page)
@@ -207,6 +208,8 @@ if __name__ == "__main__":
         sys.exit(asyncio.run(main()))
     except Exception as exc:
         code = str(exc) if isinstance(exc, CatalogError) else type(exc).__name__
+        if isinstance(exc,CatalogError) and exc.diagnostic is not None:
+            print('OSEP_CATALOG_DIAGNOSTIC='+json.dumps(exc.diagnostic,separators=(',',':')),flush=True)
         print("OSEP_CATALOG_ERROR=" + code, flush=True)
         sys.exit(3)
 

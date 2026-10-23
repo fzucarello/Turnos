@@ -16,6 +16,10 @@ on:
         description: 'Diagnóstico acotado de catálogo, sin reservas'
         type: boolean
         default: false
+      catalog_readonly:
+        description: 'Lectura de catálogo con Chrome preinstalado'
+        type: boolean
+        default: false
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -50,8 +54,13 @@ jobs:
           pip install -r requirements.txt
 
       - name: Install Playwright Browsers (Python CLI)
+        if: ${{ !inputs.catalog_readonly }}
         run: |
           python -m playwright install --with-deps chromium
+
+      - name: Verify preinstalled Chrome for read-only catalog
+        if: ${{ inputs.catalog_readonly }}
+        run: google-chrome --version
 
 
       - name: Random jitter (5-20s)
