@@ -72,17 +72,24 @@ async def browser_search(page, client, service, zone, department, timeout):
     phase('search_response')
     async with page.expect_response(matches, timeout=timeout) as received:
         form=page.locator('form[name="datosFiltroNuevoTurno"]')
-        meta=await form.evaluate("""(form,expected)=>({
+        meta=await form.evaluate("""(form,expected)=>{
+          const before=Object.fromEntries(Object.entries(expected).map(([key,value])=>[key,document.querySelector('#'+key)?.value===value]));
+          const allowed=Object.entries(expected).every(([key,value])=>
+            Array.from(document.querySelector('#'+key)?.options||[]).some(o=>o.value===value&&!o.disabled));
+          if(allowed)for(const [key,value] of Object.entries(expected))document.querySelector('#'+key).value=value;
+          return {
+          allowed_options:allowed,
+          restored_fields:Object.keys(before).filter(key=>!before[key]),
           html_valid:form.checkValidity(),
           controls_valid:Object.keys(expected).every(key=>document.querySelector('#'+key)?.checkValidity()),
           fields:Object.fromEntries(Object.entries(expected).map(([key,value])=>[key,document.querySelector('#'+key)?.value===value])),
           form_fields:Object.fromEntries(Object.entries(expected).map(([key,value])=>[key,form.elements.namedItem(key)?.value===value])),
           associated_fields:Object.fromEntries(Object.keys(expected).map(key=>[key,document.querySelector('#'+key)?.form===form])),
           native_function:typeof window.buscarProfesionales==='function'
-        })""",expected)
+        }}""",expected)
         if os.getenv('OBJ_DEPTO')=='__CATALOG_COMPARE__':
             print('OSEP_CATALOG_FORM_CHECK='+json.dumps(meta,separators=(',',':')),flush=True)
-        if not meta['html_valid'] or not meta['controls_valid'] or not all(meta['fields'].values()):
+        if not meta['allowed_options'] or not meta['html_valid'] or not meta['controls_valid'] or not all(meta['fields'].values()):
             raise CatalogError('search_form_invalid_or_changed')
         if meta['native_function']:
             phase('search_native_action')

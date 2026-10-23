@@ -145,6 +145,21 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         records=await browser_search(self.page,client,'s','z1','d1',3000)
         self.assertEqual(len(records),1)
 
+    async def test_filter_reset_before_search_is_restored_without_new_change_events(self):
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        await self.page.evaluate("""() => {
+          const service=document.querySelector('#servimod');
+          service.add(new Option('Seleccionar servicio',''));
+          document.querySelector('#id_dpto').addEventListener('change',()=>{
+            service.value='';document.querySelector('#id_zona').value='';
+          });
+        }""")
+        records=await browser_search(self.page,client,'s','z1','d1',3000)
+        self.assertEqual(len(records),1)
+        self.assertEqual(self.searches[0]['servimod'],['s'])
+        self.assertEqual(self.searches[0]['id_zona'],['z1'])
+
     async def test_comparison_mode_covers_two_zones_without_partial_publication(self):
         with patch.object(SessionHTTP,"read",self.transport()):
             result,metrics=await scan(self.page,"SERVICIO","*","*",3000,True)
