@@ -42,6 +42,12 @@ class ParserTests(unittest.TestCase):
         row=['1 PROFESIONAL FICTICIO','<div>PROFESIONAL FICTICIO</div><div class="ocultar">PROFESIONAL FICTICIO</div><div>CENTRO FICTICIO<br>DOMICILIO</div>','S','H','D','A']
         self.assertEqual(parse_results(html([row])),[('PROFESIONAL FICTICIO','CENTRO FICTICIO')])
 
+    def test_html_source_line_wraps_collapse_but_block_elements_break_lines(self):
+        for center in ['CENTRO\n    FICTICIO<br>DOMICILIO',
+                       '<p>PROFESIONAL FICTICIO</p><p>CENTRO\n FICTICIO</p><p>DOMICILIO</p>']:
+            row=['1 PROFESIONAL FICTICIO',center,'S','H','D','A']
+            self.assertEqual(parse_results(html([row])),[('PROFESIONAL FICTICIO','CENTRO FICTICIO')])
+
     def test_complete_html_duplicates_and_pagination(self):
         row=["1 PROFESIONAL FICTICIO","CENTRO FICTICIO<br>DOMICILIO","S","H","D","A"]
         self.assertEqual(parse_results(html([row,row])),[("PROFESIONAL FICTICIO","CENTRO FICTICIO")])
@@ -140,4 +146,5 @@ class RequestTests(unittest.IsolatedAsyncioTestCase):
             return html().encode()
         r.body.side_effect=delayed
         self.assertEqual(parse_results(await checked_response(r)),[("PROFESIONAL FICTICIO","CENTRO FICTICIO")])
+
 

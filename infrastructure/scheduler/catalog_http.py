@@ -103,7 +103,7 @@ class CatalogHTML(HTMLParser):
             self.cell = ""
         if tag == "br" and self.cell is not None:
             self.cell += "\n"
-        if tag == "div" and self.cell is not None:
+        if tag in {"div","p","li","section"} and self.cell is not None:
             self.cell += "\n"
 
     def handle_endtag(self, tag):
@@ -123,6 +123,8 @@ class CatalogHTML(HTMLParser):
             return
         if self.depth != 1:
             return
+        if tag in {"div","p","li","section"} and self.cell is not None:
+            self.cell += "\n"
         if tag in {"script", "style"}:
             self.hidden = max(0, self.hidden - 1)
         if tag == "th":
@@ -143,7 +145,9 @@ class CatalogHTML(HTMLParser):
         if self.depth != 1 or self.hidden:
             return
         if self.cell is not None:
-            self.cell += data
+            # Los saltos de la fuente HTML colapsan a espacios en el navegador.
+            # Sólo br y elementos de bloque generan líneas para elegir centro.
+            self.cell += re.sub(r"\s+", " ", data)
         if self.in_header:
             self.headers.append(data)
         self.total_text += " " + data
@@ -289,4 +293,5 @@ async def checked_response(response):
         return body.decode(charset[1] if charset else "utf-8")
     except (UnicodeError, LookupError):
         raise CatalogError("invalid_response_encoding") from None
+
 
