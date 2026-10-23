@@ -8,7 +8,7 @@ from urllib.parse import urlencode, parse_qs
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
 from catalog_http import (CatalogError, SessionHTTP, SEARCH_PATH, checked_response,
-                          parse_results, parse_options, request_fields, javascript_diagnostic)
+                          parse_results, parse_options, request_fields, javascript_diagnostic, mismatch_diagnostic)
 
 def html(rows=None, total=None):
     rows = rows if rows is not None else [
@@ -32,6 +32,12 @@ def page(responses):
                                  request=types.SimpleNamespace(fetch=fetch))
 
 class ParserTests(unittest.TestCase):
+    def test_mismatch_diagnostic_only_keeps_anonymous_shapes(self):
+        data=mismatch_diagnostic([('12PRIVATE FAKESECRET','PRIVATE CENTER')],[('PRIVATE FAKESECRET','PRIVATE CENTER')])
+        self.assertEqual(data['matching_without_ordinal'],1)
+        for private in ['PRIVATE','FAKESECRET','CENTER','12PRIVATE']:
+            self.assertNotIn(private,str(data))
+
     def test_javascript_diagnostic_keeps_only_flags_and_known_function_names(self):
         data=javascript_diagnostic(b"alert('No se encontraron agendas PRIVATE_FAKE_SECRET')")
         self.assertTrue(data['mentions_no_results'])
