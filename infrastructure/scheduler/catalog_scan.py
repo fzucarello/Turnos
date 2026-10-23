@@ -244,26 +244,41 @@ async def scan(page, service_label, zone_label, department_label, timeout, compa
 
 
 async def open_new_turn_tab(page, portal_url, timeout):
-    """Reintentar navegación de lectura si la pantalla Nuevo no termina de cargar."""
+    """Abrir Nuevo turno sin confiar en una única clase CSS del enlace.
+
+    Es sólo navegación de lectura; ningún botón de reserva se ejecuta aquí.
+    """
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-    url=portal_url.rstrip("/") + "/action/applicationAfi/turnos/turno/listar/listarCompleto"
+    url = portal_url.rstrip("/") + "/action/applicationAfi/turnos/turno/listar/listarCompleto"
+    tab_selector = 'a[href="#divTNue"], [data-bs-target="#divTNue"], [data-target="#divTNue"]'
     for attempt in range(3):
+        stage = "navigation"
         try:
-            phase('open_turnos')
+            phase("open_turnos")
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-            phase('new_turn_tab')
-            link=page.locator('a.nav-link[href="#divTNue"]').first
-            await link.wait_for(state="visible",timeout=timeout)
-            await link.click(timeout=timeout)
-            await page.locator("#servimod").wait_for(state="visible",timeout=timeout)
+            phase("new_turn_tab")
+            service = page.locator("#servimod")
+            # El portal puede conservar abierta la pestaña tras redirecciones.
+            # No exigir un enlace visible cuando el formulario ya está listo.
+            if await service.is_visible():
+                return
+            stage = "tab_link"
+            tab = page.locator(tab_selector).first
+            await tab.wait_for(state="visible", timeout=timeout)
+            stage = "tab_click"
+            await tab.click(timeout=timeout)
+            stage = "service_selector"
+            await service.wait_for(state="visible", timeout=timeout)
             return
         except PlaywrightTimeoutError:
-            login_visible=await page.locator('input[type="password"]').is_visible()
-            if login_visible:
+            # Un formulario de login inesperado NO equivale a catálogo vacío.
+            if await page.locator('input[type="password"]').is_visible():
                 raise CatalogError("session_expired_during_catalog") from None
-            if attempt==2:
-                raise CatalogError("new_turn_tab_timeout",{"attempts":3}) from None
-            await page.wait_for_timeout(650*(attempt+1))
+            if attempt == 2:
+                # Diagnóstico acotado: no expone nombres, credenciales ni HTML.
+                raise CatalogError("new_turn_tab_timeout",
+                                   {"attempts": 3, "stage": stage}) from None
+            await page.wait_for_timeout(650 * (attempt + 1))
 
 
 async def main():
