@@ -48,9 +48,16 @@ export async function dispatch(controller: Pick<ScheduledController, "cron" | "s
   const lastCatalog=workerMode==="production" ? await env.LEDGER.prepare(
     "SELECT MAX(updated_at) AS last FROM manual_queue WHERE kind='catalog_master' AND state='accepted'"
   ).first<{last:string|null}>() : null;
-  // Evitar consultas masivas continuas al portal externo.
+  // La extracción HTTP de una especialidad suele durar < 1 min.
+  // Enviar la siguiente al finalizar la anterior, sin la espera fija de 5 min.
+  // Evitar simultaneidad y mantener un descanso entre especialidades.
+  // Ignorar únicamente ejecuciones huérfanas anteriores al timeout (bot: 420 s).
+  const activeCatalog=workerMode==="production" ? await env.LEDGER.prepare(
+    "SELECT COUNT(*) AS n FROM manual_queue WHERE kind='catalog_master' AND state='accepted' AND catalog_status IS NULL AND updated_at>=?"
+  ).bind(new Date(Date.now()-8*60000).toISOString()).first<{n:number}>() : null;
   const allowCatalog=isCatalogWindow(scheduledTime,catalogPlan) &&
-    (!lastCatalog?.last || Date.now()-Date.parse(lastCatalog.last)>=5*60000);
+    !(activeCatalog?.n) &&
+    (!lastCatalog?.last || Date.now()-Date.parse(lastCatalog.last)>=60000);
   const allowComparison=isComparisonWindow(scheduledTime,catalogPlan);
   const manual = workerMode === "production"
     ? await env.LEDGER.prepare(
