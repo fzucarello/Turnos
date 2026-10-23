@@ -359,3 +359,25 @@ test('catálogo: no superponer ejecuciones mientras hay una activa y reciente',a
   assert.equal(posts.length,0);
   assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='next'").get().state,'pending');
 });
+
+test('se recuperan sólo ejecuciones huérfanas del catálogo tras 30 minutos',async()=>{
+ const {db,env}=setup('production');
+ const bot=botConfig(fixture);
+ db.prepare('INSERT INTO control_config(id,config_json,schedule_json,paused,revision,updated_at,updated_by) VALUES(1,?,?,0,1,?,?)')
+   .run(JSON.stringify(bot),JSON.stringify({start:'17:00',end:'17:01',interval:30}),new Date(time).toISOString(),'test');
+ const insert=db.prepare("INSERT INTO manual_queue(id,created_at,updated_at,submitted_by,dry_run,kind,state,catalog_status,config_json) VALUES(?,?,?,?,1,?,?,?,?)");
+ const stamp=ms=>new Date(time-ms).toISOString();
+ insert.run('stale',stamp(2200000),stamp(2200000),'test','catalog_master','accepted',null,JSON.stringify(bot));
+ insert.run('uncertain',stamp(2200000),stamp(2200000),'test','catalog_master','uncertain',null,JSON.stringify(bot));
+ insert.run('still-running',stamp(200000),stamp(200000),'test','catalog_master','accepted',null,JSON.stringify(bot));
+ insert.run('completed',stamp(2200000),stamp(2200000),'test','catalog_master','accepted','completed',JSON.stringify(bot));
+ insert.run('appointment',stamp(2200000),stamp(2200000),'test','appointment','uncertain',null,JSON.stringify(bot));
+ const posts=mockGitHub();
+ await dispatch(controller,env);
+ assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='stale'").get().state,'pending');
+ assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='uncertain'").get().state,'pending');
+ assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='still-running'").get().state,'accepted');
+ assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='completed'").get().state,'accepted');
+ assert.equal(db.prepare("SELECT state FROM manual_queue WHERE id='appointment'").get().state,'uncertain');
+ assert.equal(posts.length,0);
+});
