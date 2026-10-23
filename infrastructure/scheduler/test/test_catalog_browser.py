@@ -45,6 +45,7 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         self.page=await self.browser.new_page()
         self.searches=[]
         self.javascript=False
+        self.no_results_notice=False
         self.reverse_rows=False
         self.paginate_rows=False
         self.reuse_table=False
@@ -81,6 +82,9 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.03)
                 if self.javascript:
                     return await request_route.fulfill(content_type="text/javascript",body="alert('error');")
+                if self.no_results_notice:
+                    return await request_route.fulfill(content_type="text/javascript",
+                        body="mostrarInfo('No se encontraron agendas en esta especialidad');")
                 rows=[["1 PROFESIONAL "+fields["id_dpto"][0],"CENTRO "+fields["id_zona"][0],"S","H","D","A"]]
                 if self.reverse_rows:
                     rows.append(['2 SEGUNDO PROFESIONAL','OTRO CENTRO','S','H','D','A'])
@@ -132,6 +136,15 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(CatalogError,"unexpected_content_type"):
             await scan(self.page,"SERVICIO","*","*",3000)
         self.assertIn("ANTERIOR",await self.page.locator("#tblResultadoProfesionales").inner_text())
+
+    async def test_no_results_js_does_not_read_stale_professionals(self):
+        self.no_results_notice=True
+        with patch.object(SessionHTTP,"read",self.transport()):
+            result,metrics=await scan(self.page,"SERVICIO","*","*",3000)
+        self.assertEqual(len(result["entries"]),4)
+        self.assertTrue(all(not e[2] for e in result["entries"]))
+        self.assertEqual(metrics["browser_searches"],4)
+        self.assertNotIn("ANTERIOR",str(result))
 
     async def test_rendered_record_mismatch_is_rejected(self):
         await self.page.add_style_tag(content='td:nth-child(2) { text-transform: uppercase }')
