@@ -124,6 +124,7 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         link_collection.first=link
         select=MagicMock()
         select.wait_for=AsyncMock()
+        select.is_visible=AsyncMock(return_value=False)
         password=MagicMock()
         password.is_visible=AsyncMock(return_value=False)
         mock_page.locator.side_effect=lambda sel: (
@@ -142,13 +143,48 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         link.wait_for=AsyncMock(side_effect=PlaywrightTimeoutError('temporary'))
         link_collection=MagicMock()
         link_collection.first=link
+        select=MagicMock()
+        select.is_visible=AsyncMock(return_value=False)
         password=MagicMock()
         password.is_visible=AsyncMock(return_value=True)
         mock_page.locator.side_effect=lambda sel: (
-            link_collection if '#divTNue' in sel else password)
+            link_collection if '#divTNue' in sel else
+            select if sel=='#servimod' else password)
         with self.assertRaisesRegex(CatalogError,'session_expired_during_catalog'):
             await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
         self.assertEqual(mock_page.goto.await_count,1)
+
+    async def test_tab_already_open_does_not_need_navigation_link(self):
+        mock_page=MagicMock()
+        mock_page.goto=AsyncMock()
+        select=MagicMock()
+        select.is_visible=AsyncMock(return_value=True)
+        mock_page.locator.side_effect=lambda sel: select if sel=='#servimod' else MagicMock()
+        await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
+        mock_page.goto.assert_awaited_once()
+        select.wait_for.assert_not_called()
+
+    async def test_navigation_failure_reports_safe_stage(self):
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        mock_page=MagicMock()
+        mock_page.goto=AsyncMock()
+        mock_page.wait_for_timeout=AsyncMock()
+        tab=MagicMock()
+        tab.wait_for=AsyncMock(side_effect=PlaywrightTimeoutError('slow'))
+        tabs=MagicMock()
+        tabs.first=tab
+        select=MagicMock()
+        select.is_visible=AsyncMock(return_value=False)
+        password=MagicMock()
+        password.is_visible=AsyncMock(return_value=False)
+        mock_page.locator.side_effect=lambda sel: (
+            tabs if '#divTNue' in sel else
+            select if sel=='#servimod' else password)
+        with self.assertRaises(CatalogError) as ctx:
+            await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
+        self.assertEqual(str(ctx.exception),'new_turn_tab_timeout')
+        self.assertEqual(ctx.exception.diagnostic,{'attempts':3,'stage':'tab_link'})
+        self.assertEqual(mock_page.goto.await_count,3)
 
     async def test_complete_scan_uses_fresh_response_then_http(self):
         with patch.object(SessionHTTP,"read",self.transport()):
