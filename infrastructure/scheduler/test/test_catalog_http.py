@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 from urllib.parse import urlencode, parse_qs
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
-from catalog_http import (CatalogError, SessionHTTP, SEARCH_PATH, checked_response,
-                          parse_results, parse_options, request_fields, javascript_diagnostic, mismatch_diagnostic)
+from catalog_http import (CatalogError, CatalogNoResults, SessionHTTP, SEARCH_PATH, checked_response,
+                          parse_results, parse_options, request_fields, javascript_diagnostic, explicit_empty_notice, mismatch_diagnostic)
 
 def html(rows=None, total=None):
     rows = rows if rows is not None else [
@@ -43,6 +43,24 @@ class ParserTests(unittest.TestCase):
         self.assertTrue(data['mentions_no_results'])
         self.assertEqual(data['recognized_calls'],['alert'])
         self.assertNotIn('PRIVATE_FAKE_SECRET',str(data))
+
+    def test_only_explicit_no_agendas_notice_is_accepted(self):
+        for body in [
+            b"mostrarInfo('No se encontraron agendas en la busqueda actual');",
+            b"mostrarInfo('No hay profesionales con turnos disponibles');",
+            b"mostrarInfo('Sin agendas');",
+            b"mostrarInfo('No existen resultados de esta busqueda');"
+        ]:
+            self.assertTrue(explicit_empty_notice(body))
+        for body in [
+            b"alert('Error: no se encontraron agendas, sesion vencida')",
+            b"alert('No se encontraron agendas; login nuevamente')",
+            b"alert('No hay permiso para consultar agendas')",
+            b"alert('Error de red')",
+            b"alert('No se encontraron agendas')" + b"z" * 2050,
+            b"window.location.href='/login';",
+        ]:
+            self.assertFalse(explicit_empty_notice(body))
 
     def test_hidden_duplicate_name_and_block_center(self):
         row=['1 PROFESIONAL FICTICIO','<div>PROFESIONAL FICTICIO</div><div class="ocultar">PROFESIONAL FICTICIO</div><div>CENTRO FICTICIO<br>DOMICILIO</div>','S','H','D','A']
@@ -100,6 +118,18 @@ class RequestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parse_results(await checked_response(browser,browser=True)),expected)
         self.assertEqual(parse_results(await checked_response(direct)),expected)
         self.assertEqual(parse_results(await checked_response(direct,browser=True)),expected)
+
+    async def test_explicit_no_agendas_js_is_handled_without_using_old_html(self):
+        js=response("mostrarInfo('No se encontraron agendas para su busqueda')",mime="text/javascript")
+        with self.assertRaisesRegex(CatalogNoResults,"explicit_no_agendas"):
+            await checked_response(js)
+        p=page([response("mostrarInfo('No se encontraron agendas para su busqueda')",mime="text/javascript")])
+        c=SessionHTTP(p,sleep=AsyncMock())
+        c.remember_search(types.SimpleNamespace(method="POST",url="https://portal.example"+SEARCH_PATH,
+            post_data=urlencode({"servimod":"s","id_zona":"z","id_dpto":"d",
+                                 "id_tmovafi":"PRIVATE_FAKE","buscar":"Buscar"})))
+        self.assertEqual(await c.search("s","z","d"),[])
+        self.assertEqual(p.request.fetch.await_count,1)
 
     async def test_200_javascript_never_reads_stale_table(self):
         r=response("alert('error')",mime="text/javascript")
