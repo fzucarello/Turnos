@@ -150,6 +150,35 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
             await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
         self.assertEqual(mock_page.goto.await_count,1)
 
+    async def test_new_tab_timeout_diagnostic_has_only_dom_counts(self):
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        mock_page=MagicMock()
+        mock_page.goto=AsyncMock()
+        mock_page.wait_for_timeout=AsyncMock()
+        mock_link=MagicMock()
+        mock_link.wait_for=AsyncMock(side_effect=PlaywrightTimeoutError('temporary'))
+        mock_link_collection=MagicMock()
+        mock_link_collection.first=mock_link
+        mock_link_collection.count=AsyncMock(return_value=1)
+        service=MagicMock()
+        service.count=AsyncMock(return_value=1)
+        form=MagicMock()
+        form.count=AsyncMock(return_value=1)
+        password=MagicMock()
+        password.is_visible=AsyncMock(return_value=False)
+        mock_page.locator.side_effect=lambda selector: {
+            'a.nav-link[href="#divTNue"]':mock_link_collection,
+            '#servimod':service,
+            'form[name="datosFiltroNuevoTurno"]':form,
+            'input[type="password"]':password
+        }[selector]
+        with self.assertRaisesRegex(CatalogError,'new_turn_tab_timeout') as ctx:
+            await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
+        self.assertEqual(ctx.exception.diagnostic,
+            {'attempts':3,'stage':'tab_visible','tab_links':1,
+             'service_controls':1,'forms':1})
+        self.assertEqual(mock_page.goto.await_count,3)
+
     async def test_complete_scan_uses_fresh_response_then_http(self):
         with patch.object(SessionHTTP,"read",self.transport()):
             result,metrics=await scan(self.page,"SERVICIO","*","*",3000)
