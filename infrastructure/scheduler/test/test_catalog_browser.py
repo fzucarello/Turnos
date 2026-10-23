@@ -3,12 +3,12 @@ import json
 import pathlib
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0,str(pathlib.Path(__file__).parents[1]))
 from catalog_http import CatalogError, SessionHTTP, SEARCH_PATH, DEPARTMENT_PATH
-from catalog_scan import scan, browser_departments, browser_search
+from catalog_scan import scan, browser_departments, browser_search, open_new_turn_tab
 from test_catalog_http import html
 
 PAGE = """
@@ -111,6 +111,44 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
                 return '<option value="d1">UNO</option><option value="d2">DOS</option>'
             return html([["1 PROFESIONAL "+fields["id_dpto"],"CENTRO "+("DIFERENTE" if mismatch else fields["id_zona"]),"S","H","D","A"]])
         return read
+
+    async def test_tab_navigation_retries_once_after_transient_timeout(self):
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        mock_page=MagicMock()
+        mock_page.goto=AsyncMock()
+        mock_page.wait_for_timeout=AsyncMock()
+        link=MagicMock()
+        link.wait_for=AsyncMock(side_effect=[PlaywrightTimeoutError('temporary'),None])
+        link.click=AsyncMock()
+        link_collection=MagicMock()
+        link_collection.first=link
+        select=MagicMock()
+        select.wait_for=AsyncMock()
+        password=MagicMock()
+        password.is_visible=AsyncMock(return_value=False)
+        mock_page.locator.side_effect=lambda sel: (
+            link_collection if '#divTNue' in sel else
+            select if sel=='#servimod' else password)
+        await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
+        self.assertEqual(mock_page.goto.await_count,2)
+        self.assertEqual(link.click.await_count,1)
+        self.assertEqual(mock_page.wait_for_timeout.await_count,1)
+
+    async def test_tab_navigation_fails_closed_if_login_reappears(self):
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        mock_page=MagicMock()
+        mock_page.goto=AsyncMock()
+        link=MagicMock()
+        link.wait_for=AsyncMock(side_effect=PlaywrightTimeoutError('temporary'))
+        link_collection=MagicMock()
+        link_collection.first=link
+        password=MagicMock()
+        password.is_visible=AsyncMock(return_value=True)
+        mock_page.locator.side_effect=lambda sel: (
+            link_collection if '#divTNue' in sel else password)
+        with self.assertRaisesRegex(CatalogError,'session_expired_during_catalog'):
+            await open_new_turn_tab(mock_page,'https://portal.example/webapp_pri',1000)
+        self.assertEqual(mock_page.goto.await_count,1)
 
     async def test_complete_scan_uses_fresh_response_then_http(self):
         with patch.object(SessionHTTP,"read",self.transport()):
