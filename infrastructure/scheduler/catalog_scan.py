@@ -247,6 +247,7 @@ async def open_new_turn_tab(page, portal_url, timeout):
     """Reintentar navegación de lectura si la pantalla Nuevo no termina de cargar."""
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     url=portal_url.rstrip("/") + "/action/applicationAfi/turnos/turno/listar/listarCompleto"
+    tab_selector='a[href="#divTNue"], [data-bs-target="#divTNue"], [data-target="#divTNue"]'
     for attempt in range(3):
         stage="navigation"
         try:
@@ -254,12 +255,16 @@ async def open_new_turn_tab(page, portal_url, timeout):
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
             stage="tab_visible"
             phase('new_turn_tab')
-            link=page.locator('a.nav-link[href="#divTNue"]').first
+            service=page.locator("#servimod")
+            # El formulario puede estar ya visible aunque el enlace no lo esté.
+            if await service.is_visible():
+                return
+            link=page.locator(tab_selector).first
             await link.wait_for(state="visible",timeout=timeout)
             stage="tab_click"
             await link.click(timeout=timeout)
             stage="service_visible"
-            await page.locator("#servimod").wait_for(state="visible",timeout=timeout)
+            await service.wait_for(state="visible",timeout=timeout)
             return
         except PlaywrightTimeoutError:
             login_visible=await page.locator('input[type="password"]').is_visible()
@@ -268,7 +273,7 @@ async def open_new_turn_tab(page, portal_url, timeout):
             if attempt==2:
                 # Sólo características del DOM, sin credenciales, URLs ni texto.
                 diagnostic={"attempts":3,"stage":stage}
-                for field,selector in (("tab_links",'a.nav-link[href="#divTNue"]'),
+                for field,selector in (("tab_links",tab_selector),
                                        ("service_controls","#servimod"),
                                        ("forms",'form[name="datosFiltroNuevoTurno"]')):
                     try:
