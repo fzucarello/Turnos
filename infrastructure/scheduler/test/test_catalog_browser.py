@@ -123,6 +123,17 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         records=await browser_search(self.page,client,'s','z1','d1',3000)
         self.assertEqual(len(records),2)
 
+    async def test_native_search_action_emits_the_same_validated_request(self):
+        await self.page.evaluate("""() => {
+          window.buscarProfesionales=search;
+          document.querySelector('#datosFiltroNuevoTurno #buscar').onclick=()=>{throw Error('Wrong action')};
+        }""")
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        records=await browser_search(self.page,client,'s','z1','d1',3000)
+        self.assertEqual(len(records),1)
+        self.assertEqual(len(self.searches),1)
+
     async def test_comparison_mode_covers_two_zones_without_partial_publication(self):
         with patch.object(SessionHTTP,"read",self.transport()):
             result,metrics=await scan(self.page,"SERVICIO","*","*",3000,True)
