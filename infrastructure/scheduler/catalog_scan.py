@@ -58,7 +58,6 @@ async def browser_departments(page, client, zone, timeout):
 
 async def browser_search(page, client, service, zone, department, timeout):
     phase('search_controls')
-    await page.locator("#servimod").select_option(value=service, timeout=timeout)
     await page.locator("#id_dpto").select_option(value=department, timeout=timeout)
     expected = {"servimod": service, "id_zona": zone, "id_dpto": department}
     def matches(response):
@@ -66,11 +65,15 @@ async def browser_search(page, client, service, zone, department, timeout):
         if urlsplit(request.url).path != SEARCH_PATH or request.method != "POST":
             return False
         fields = dict(parse_qsl(request.post_data or "", keep_blank_values=True))
+        if os.getenv('OBJ_DEPTO')=='__CATALOG_COMPARE__':
+            print('OSEP_CATALOG_REQUEST_MATCH='+json.dumps({k:fields.get(k)==v for k,v in expected.items()},separators=(',',':')),flush=True)
         return all(fields.get(k) == v for k, v in expected.items())
     # Sólo se espera una respuesta iniciada por este clic y con estos filtros.
     phase('search_response')
     async with page.expect_response(matches, timeout=timeout) as received:
-        await page.locator("input#buscar").first.click(timeout=timeout)
+        phase('search_click')
+        await page.locator('form[name="datosFiltroNuevoTurno"] input#buscar').click(timeout=timeout)
+        phase('search_response')
     response = await received.value
     html = await checked_response(response)
     records = parse_results(html)
