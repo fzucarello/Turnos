@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0,str(pathlib.Path(__file__).parents[1]))
 from catalog_http import CatalogError, SessionHTTP, SEARCH_PATH, DEPARTMENT_PATH
-from catalog_scan import scan
+from catalog_scan import scan, browser_departments, browser_search
 from test_catalog_http import html
 
 PAGE = """
@@ -44,11 +44,15 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         self.page=await self.browser.new_page()
         self.searches=[]
         self.javascript=False
+        self.reverse_rows=False
         async def route(request_route):
             request=request_route.request
             path=urlsplit(request.url).path
             if path=="/":
-                return await request_route.fulfill(content_type="text/html",body=PAGE)
+                body=PAGE
+                if self.reverse_rows:
+                    body=body.replace("document.querySelector('#lista_profesionales').innerHTML=await r.text();", "{ const dom=new DOMParser().parseFromString(await r.text(),'text/html'); const tb=dom.querySelector('tbody'); Array.from(tb.children).reverse().forEach(tr=>tb.appendChild(tr)); document.querySelector('#lista_profesionales').innerHTML=dom.body.innerHTML; }")
+                return await request_route.fulfill(content_type="text/html",body=body)
             if path==DEPARTMENT_PATH:
                 await asyncio.sleep(0.03)
                 return await request_route.fulfill(content_type="text/html",body='<option value="">Seleccionar</option><option value="d1">UNO</option><option value="d2">DOS</option>')
@@ -58,7 +62,10 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.03)
                 if self.javascript:
                     return await request_route.fulfill(content_type="text/javascript",body="alert('error');")
-                body=html([["1 PROFESIONAL "+fields["id_dpto"][0],"CENTRO "+fields["id_zona"][0],"S","H","D","A"]])
+                rows=[["1 PROFESIONAL "+fields["id_dpto"][0],"CENTRO "+fields["id_zona"][0],"S","H","D","A"]]
+                if self.reverse_rows:
+                    rows.append(['2 SEGUNDO PROFESIONAL','OTRO CENTRO','S','H','D','A'])
+                body=html(rows)
                 return await request_route.fulfill(content_type="text/html",body=body)
             raise AssertionError("Unexpected endpoint")
         await self.page.route("https://portal.example/**",route)
@@ -106,6 +113,14 @@ class BrowserTests(unittest.IsolatedAsyncioTestCase):
         await self.page.add_style_tag(content='td:nth-child(2) { text-transform: uppercase }')
         with self.assertRaisesRegex(CatalogError,'browser_result_mismatch'):
             await scan(self.page,'SERVICIO','*','*',3000)
+
+    async def test_client_side_sorting_preserves_equivalence(self):
+        self.reverse_rows=True
+        await self.page.reload()
+        client=SessionHTTP(self.page)
+        await browser_departments(self.page,client,'z1',3000)
+        records=await browser_search(self.page,client,'s','z1','d1',3000)
+        self.assertEqual(len(records),2)
 
     async def test_comparison_mode_covers_two_zones_without_partial_publication(self):
         with patch.object(SessionHTTP,"read",self.transport()):
